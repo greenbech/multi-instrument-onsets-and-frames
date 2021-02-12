@@ -133,7 +133,7 @@ class PianoRollAudioDataset(Dataset):
                 label[frame_right:offset_right, f] = 1
                 velocity[left:frame_right, f] = vel
 
-            label_dict = dict(path=audio_path, audio=audio, label=label, velocity=velocity)
+            label_dict = dict(path=audio_path, label=label, velocity=velocity)
             torch.save(label_dict, saved_data_path)
         return CompactAudioAndLabels(
             path=audio_path, audio=audio, label=label_dict["label"], velocity=label_dict["velocity"]
