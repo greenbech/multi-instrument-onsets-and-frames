@@ -111,7 +111,7 @@ def train(
 
     loop = tqdm(range(resume_iteration + 1, iterations + 1))
     for i, batch in zip(loop, cycle(loader)):
-        predictions, losses = model.run_on_batch(batch)
+        _, losses = model.run_on_batch(batch)
 
         loss = sum(losses.values())
         optimizer.zero_grad()

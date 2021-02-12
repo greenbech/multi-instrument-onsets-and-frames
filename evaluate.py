@@ -2,6 +2,7 @@ import argparse
 import os
 import sys
 from collections import defaultdict
+from typing import List
 
 import numpy as np
 import torch
@@ -16,14 +17,22 @@ from tqdm import tqdm
 
 import onsets_and_frames.dataset as dataset_module
 from onsets_and_frames.constants import HOP_LENGTH, MIN_MIDI, SAMPLE_RATE
+from onsets_and_frames.data_classes import AudioAndLabels
 from onsets_and_frames.decoding import extract_notes, notes_to_frames
 from onsets_and_frames.midi import save_midi
+from onsets_and_frames.transcriber import OnsetsAndFrames
 from onsets_and_frames.utils import save_pianoroll, summary
 
 eps = sys.float_info.epsilon
 
 
-def evaluate(data, model, onset_threshold=0.5, frame_threshold=0.5, save_path=None):
+def evaluate(
+    data: List[AudioAndLabels],
+    model: OnsetsAndFrames,
+    onset_threshold=0.5,
+    frame_threshold=0.5,
+    save_path=None,
+):
     metrics = defaultdict(list)
 
     for label in data:
@@ -32,16 +41,14 @@ def evaluate(data, model, onset_threshold=0.5, frame_threshold=0.5, save_path=No
         for key, loss in losses.items():
             metrics[key].append(loss.item())
 
-        for key, value in pred.items():
+        for value in pred:
             value.squeeze_(0).relu_()
 
-        p_ref, i_ref, v_ref = extract_notes(label["onset"], label["frame"], label["velocity"])
-        p_est, i_est, v_est = extract_notes(
-            pred["onset"], pred["frame"], pred["velocity"], onset_threshold, frame_threshold
-        )
+        p_ref, i_ref, v_ref = extract_notes(label.annotation.onset, label.annotation.frame, label.annotation.velocity)
+        p_est, i_est, v_est = extract_notes(pred.onset, pred.frame, pred.velocity, onset_threshold, frame_threshold)
 
-        t_ref, f_ref = notes_to_frames(p_ref, i_ref, label["frame"].shape)
-        t_est, f_est = notes_to_frames(p_est, i_est, pred["frame"].shape)
+        t_ref, f_ref = notes_to_frames(p_ref, i_ref, label.annotation.frame.shape)
+        t_est, f_est = notes_to_frames(p_est, i_est, pred.frame.shape)
 
         scaling = HOP_LENGTH / SAMPLE_RATE
 
@@ -91,11 +98,11 @@ def evaluate(data, model, onset_threshold=0.5, frame_threshold=0.5, save_path=No
 
         if save_path is not None:
             os.makedirs(save_path, exist_ok=True)
-            label_path = os.path.join(save_path, os.path.basename(label["path"]) + ".label.png")
-            save_pianoroll(label_path, label["onset"], label["frame"])
-            pred_path = os.path.join(save_path, os.path.basename(label["path"]) + ".pred.png")
-            save_pianoroll(pred_path, pred["onset"], pred["frame"])
-            midi_path = os.path.join(save_path, os.path.basename(label["path"]) + ".pred.mid")
+            label_path = os.path.join(save_path, os.path.basename(label.path) + ".label.png")
+            save_pianoroll(label_path, label.annotation.onset, label.annotation.frame)
+            pred_path = os.path.join(save_path, os.path.basename(label.path) + ".pred.png")
+            save_pianoroll(pred_path, pred.onset, pred.frame)
+            midi_path = os.path.join(save_path, os.path.basename(label.path) + ".pred.mid")
             save_midi(midi_path, p_est, i_est, v_est)
 
     return metrics

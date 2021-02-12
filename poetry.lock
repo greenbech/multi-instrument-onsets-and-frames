@@ -784,6 +784,17 @@ typing-extensions = "*"
 
 [[package]]
 category = "main"
+description = "An audio package for PyTorch"
+name = "torchaudio"
+optional = false
+python-versions = "*"
+version = "0.7.2"
+
+[package.dependencies]
+torch = "1.7.1"
+
+[[package]]
+category = "main"
 description = "Fast, Extensible Progress Meter"
 name = "tqdm"
 optional = false
@@ -874,7 +885,7 @@ python-versions = "*"
 version = "1.12.1"
 
 [metadata]
-content-hash = "3de9b2a2883869912c139fb422a1e3a4b16065d69188526e05716bbcc1df238d"
+content-hash = "c47592afc20e694e786ead665a2a88b9e6f1cc774b7240ccdf5be93a296a1abf"
 lock-version = "1.0"
 python-versions = "^3.8"
 
@@ -1454,6 +1465,16 @@ torch = [
     {file = "torch-1.7.1-cp39-cp39-manylinux1_x86_64.whl", hash = "sha256:a3793dcceb12b1e2281290cca1277c5ce86ddfd5bf044f654285a4d69057aea7"},
     {file = "torch-1.7.1-cp39-cp39-win_amd64.whl", hash = "sha256:6652a767a0572ae0feb74ad128758e507afd3b8396b6e7f147e438ba8d4c6f63"},
     {file = "torch-1.7.1-cp39-none-macosx_10_9_x86_64.whl", hash = "sha256:38d67f4fb189a92a977b2c0a38e4f6dd413e0bf55aa6d40004696df7e40a71ff"},
+]
+torchaudio = [
+    {file = "torchaudio-0.7.2-cp36-cp36m-macosx_10_9_x86_64.whl", hash = "sha256:cfd71a1fd9da5ba461d0f1f609c6566cf5ede88557220d41541b0d1f5d879b53"},
+    {file = "torchaudio-0.7.2-cp36-cp36m-manylinux1_x86_64.whl", hash = "sha256:f310c90fbf283f7caea5b7788cf44b0d2a41615740120e59e0bd882f404e5c25"},
+    {file = "torchaudio-0.7.2-cp37-cp37m-macosx_10_9_x86_64.whl", hash = "sha256:ed7cf9c3233e3a5b0ed65ec90371f69818129946de017b8f27f537b3f4c3e3e8"},
+    {file = "torchaudio-0.7.2-cp37-cp37m-manylinux1_x86_64.whl", hash = "sha256:46606a33422e180c4b2c299ab4c8a10bf535051cc801a06683663cc5635750cb"},
+    {file = "torchaudio-0.7.2-cp38-cp38-macosx_10_9_x86_64.whl", hash = "sha256:5fe5b09d4b696743bf458912dede8149cc5b1b98a9b372eb1e19d5f9c696937d"},
+    {file = "torchaudio-0.7.2-cp38-cp38-manylinux1_x86_64.whl", hash = "sha256:36f99013e66c6897b0a40f92a43e4ee04dae4080e7fba48b2562f790762d7fd0"},
+    {file = "torchaudio-0.7.2-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:9088feb3fa6dc970832e313a0aafeb3e32502b487bdedef64131e29423f81e88"},
+    {file = "torchaudio-0.7.2-cp39-cp39-manylinux1_x86_64.whl", hash = "sha256:41c3fad42383cab950a8c2aa15b0771e0f2567a62c5da1008c40afd77e4aa7b4"},
 ]
 tqdm = [
     {file = "tqdm-4.56.2-py2.py3-none-any.whl", hash = "sha256:a89be573bfddb81bb0b395a416d5e55e3ecc73ce95a368a4f6360bedea33195e"},

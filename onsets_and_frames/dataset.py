@@ -2,6 +2,7 @@ import json
 import os
 from abc import abstractmethod
 from glob import glob
+from typing import NamedTuple
 
 import numpy as np
 import soundfile
@@ -18,7 +19,22 @@ from .constants import (
     MIN_MIDI,
     SAMPLE_RATE,
 )
+from .data_classes import AudioAndLabels, MusicAnnotation
 from .midi import parse_midi
+
+
+class CompactAudioAndLabels(NamedTuple):
+    """Compact audio and label class that will be held in memory (not GPU)"""
+
+    # path to audio file
+    path: str
+    # raw waveform represented with 16 bits
+    audio: torch.ShortTensor  # [1, num_steps]
+    # a matrix that contains the onset/offset/frame labels encoded as:
+    # 3 = onset, 2 = frames after onset, 1 = offset, 0 = all else
+    label: torch.ByteTensor  # [num_steps, midi_bins]
+    # a matrix that contains MIDI velocity values at the frame locations
+    velocity: torch.ByteTensor  # [num_steps, midi_bins]
 
 
 class PianoRollAudioDataset(Dataset):
@@ -35,12 +51,11 @@ class PianoRollAudioDataset(Dataset):
             for input_files in tqdm(self.files(group), desc="Loading group %s" % group):
                 self.data.append(self.load(*input_files))
 
-    def __getitem__(self, index):
-        data = self.data[index]
-        result = dict(path=data["path"])
+    def __getitem__(self, index) -> AudioAndLabels:
+        data: CompactAudioAndLabels = self.data[index]
 
         if self.sequence_length is not None:
-            audio_length = len(data["audio"])
+            audio_length = len(data.audio)
             step_begin = self.random.randint(audio_length - self.sequence_length) // HOP_LENGTH
             n_steps = self.sequence_length // HOP_LENGTH
             step_end = step_begin + n_steps
@@ -48,21 +63,25 @@ class PianoRollAudioDataset(Dataset):
             begin = step_begin * HOP_LENGTH
             end = begin + self.sequence_length
 
-            result["audio"] = data["audio"][begin:end].to(self.device)
-            result["label"] = data["label"][step_begin:step_end, :].to(self.device)
-            result["velocity"] = data["velocity"][step_begin:step_end, :].to(self.device)
+            audio = data.audio[begin:end].to(self.device)
+            label = data.label[step_begin:step_end, :].to(self.device)
+            velocity = data.velocity[step_begin:step_end, :].to(self.device)
         else:
-            result["audio"] = data["audio"].to(self.device)
-            result["label"] = data["label"].to(self.device)
-            result["velocity"] = data["velocity"].to(self.device).float()
+            audio = data.audio.to(self.device)
+            label = data.label.to(self.device)
+            velocity = data.velocity.to(self.device).float()
 
-        result["audio"] = result["audio"].float().div_(32768.0)
-        result["onset"] = (result["label"] == 3).float()
-        result["offset"] = (result["label"] == 1).float()
-        result["frame"] = (result["label"] > 1).float()
-        result["velocity"] = result["velocity"].float().div_(128.0)
+        audio = audio.float().div_(32768.0)
+        onset = (label == 3).float()
+        offset = (label == 1).float()
+        frame = (label > 1).float()
+        velocity = velocity.float().div_(128.0)
 
-        return result
+        return AudioAndLabels(
+            path=data.path,
+            audio=audio,
+            annotation=MusicAnnotation(onset=onset, offset=offset, frame=frame, velocity=velocity),
+        )
 
     def __len__(self):
         return len(self.data)
@@ -78,62 +97,47 @@ class PianoRollAudioDataset(Dataset):
         """return the list of input files (audio_filename, tsv_filename) for this group"""
         raise NotImplementedError
 
-    def load(self, audio_path, tsv_path):
+    def load(self, audio_path: str, tsv_path: str) -> CompactAudioAndLabels:
         """
         load an audio track and the corresponding labels
-
-        Returns
-        -------
-            A dictionary containing the following data:
-
-            path: str
-                the path to the audio file
-
-            audio: torch.ShortTensor, shape = [num_samples]
-                the raw waveform
-
-            label: torch.ByteTensor, shape = [num_steps, midi_bins]
-                a matrix that contains the onset/offset/frame labels encoded as:
-                3 = onset, 2 = frames after onset, 1 = offset, 0 = all else
-
-            velocity: torch.ByteTensor, shape = [num_steps, midi_bins]
-                a matrix that contains MIDI velocity values at the frame locations
         """
-        saved_data_path = audio_path.replace(".flac", ".pt").replace(".wav", ".pt")
-        if os.path.exists(saved_data_path):
-            return torch.load(saved_data_path)
-
         audio, sr = soundfile.read(audio_path, dtype="int16")
         assert sr == SAMPLE_RATE
-
         audio = torch.ShortTensor(audio)
-        audio_length = len(audio)
 
-        n_keys = MAX_MIDI - MIN_MIDI + 1
-        n_steps = (audio_length - 1) // HOP_LENGTH + 1
+        saved_data_path = audio_path.replace(".flac", ".pt").replace(".wav", ".pt")
+        if os.path.exists(saved_data_path):
+            label_dict = torch.load(saved_data_path)
+        else:
+            audio_length = len(audio)
 
-        label = torch.zeros(n_steps, n_keys, dtype=torch.uint8)
-        velocity = torch.zeros(n_steps, n_keys, dtype=torch.uint8)
+            n_keys = MAX_MIDI - MIN_MIDI + 1
+            n_steps = (audio_length - 1) // HOP_LENGTH + 1
 
-        tsv_path = tsv_path
-        midi = np.loadtxt(tsv_path, delimiter="\t", skiprows=1)
+            label = torch.zeros(n_steps, n_keys, dtype=torch.uint8)
+            velocity = torch.zeros(n_steps, n_keys, dtype=torch.uint8)
 
-        for onset, offset, note, vel in midi:
-            left = int(round(onset * SAMPLE_RATE / HOP_LENGTH))
-            onset_right = min(n_steps, left + HOPS_IN_ONSET)
-            frame_right = int(round(offset * SAMPLE_RATE / HOP_LENGTH))
-            frame_right = min(n_steps, frame_right)
-            offset_right = min(n_steps, frame_right + HOPS_IN_OFFSET)
+            tsv_path = tsv_path
+            midi = np.loadtxt(tsv_path, delimiter="\t", skiprows=1)
 
-            f = int(note) - MIN_MIDI
-            label[left:onset_right, f] = 3
-            label[onset_right:frame_right, f] = 2
-            label[frame_right:offset_right, f] = 1
-            velocity[left:frame_right, f] = vel
+            for onset, offset, note, vel in midi:
+                left = int(round(onset * SAMPLE_RATE / HOP_LENGTH))
+                onset_right = min(n_steps, left + HOPS_IN_ONSET)
+                frame_right = int(round(offset * SAMPLE_RATE / HOP_LENGTH))
+                frame_right = min(n_steps, frame_right)
+                offset_right = min(n_steps, frame_right + HOPS_IN_OFFSET)
 
-        data = dict(path=audio_path, audio=audio, label=label, velocity=velocity)
-        torch.save(data, saved_data_path)
-        return data
+                f = int(note) - MIN_MIDI
+                label[left:onset_right, f] = 3
+                label[onset_right:frame_right, f] = 2
+                label[frame_right:offset_right, f] = 1
+                velocity[left:frame_right, f] = vel
+
+            label_dict = dict(path=audio_path, audio=audio, label=label, velocity=velocity)
+            torch.save(label_dict, saved_data_path)
+        return CompactAudioAndLabels(
+            path=audio_path, audio=audio, label=label_dict["label"], velocity=label_dict["velocity"]
+        )
 
 
 class MAESTRO(PianoRollAudioDataset):

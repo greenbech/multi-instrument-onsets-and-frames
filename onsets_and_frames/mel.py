@@ -92,7 +92,7 @@ class MelSpectrogram(torch.nn.Module):
         -------
         mel_output: torch.FloatTensor of shape (B, T, n_mels)
         """
-        assert torch.min(y.data) >= -1
+        assert (min_data := torch.min(y.data)) >= -1, f"Min waveform value was {min_data}"
         assert torch.max(y.data) <= 1
 
         magnitudes, phases = self.stft(y)
