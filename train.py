@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+from pprint import pprint
 
 import numpy as np
 import torch
@@ -128,8 +129,15 @@ def train(
         if i % validation_interval == 0:
             model.eval()
             with torch.no_grad():
-                for key, value in evaluate(validation_dataset, model).items():
+                metrics = evaluate(validation_dataset, model)
+                print(f"\n\nMetrics: ")
+                longest_key = max([len(key) for key in metrics])
+                for key, value in metrics.items():
+                    print(
+                        f"\t{key:>{longest_key}}: {100*np.min(value):.3f} {100*np.mean(value):.3f} {100*np.max(value):.3f}"
+                    )
                     writer.add_scalar("validation/" + key.replace(" ", "_"), np.mean(value), global_step=i)
+                print()
             model.train()
 
         if i % checkpoint_interval == 0:
