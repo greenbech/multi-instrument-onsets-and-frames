@@ -4,3 +4,5 @@ __pycache__
 data
 runs
 .python-version
+
+settings.json
