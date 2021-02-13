@@ -6,3 +6,5 @@ runs
 .python-version
 
 settings.json
+t.py
+tmp/
