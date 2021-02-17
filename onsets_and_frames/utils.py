@@ -5,6 +5,8 @@ import torch
 from PIL import Image
 from torch.nn.modules.module import _addindent
 
+from onsets_and_frames.data_classes import MusicAnnotation
+
 
 def cycle(iterable):
     while True:
@@ -77,4 +79,45 @@ def save_pianoroll(path, onsets, frames, onset_threshold=0.5, frame_threshold=0.
     image = torch.stack([onsets, frames, both], dim=2).flip(0).mul(255).numpy()
     image = Image.fromarray(image, "RGB")
     image = image.resize((image.size[0], image.size[1] * zoom))
+    image.save(path)
+
+
+def save_pred_and_label_piano_roll(
+    path,
+    reference: MusicAnnotation,
+    prediction: MusicAnnotation,
+    onset_threshold=0.5,
+    offsets_threshold=0.5,
+    frame_threshold=0.5,
+    zoom=4,
+):
+    """
+    Saves a piano roll diagram
+
+    Parameters
+    ----------
+    path: str
+    onsets: torch.FloatTensor, shape = [frames, bins]
+    frames: torch.FloatTensor, shape = [frames, bins]
+    onset_threshold: float
+    frame_threshold: float
+    zoom: int
+    """
+    assert reference.onset.shape == prediction.onset.shape
+    ref_frame = (reference.frame).t().to(torch.uint8).cpu()
+    reference_stack = torch.stack([ref_frame, ref_frame, ref_frame], dim=2).cpu()
+    reference_image_data = reference_stack.flip(0).mul(int(255 // 4)).numpy()
+
+    pred_onset = (prediction.onset > onset_threshold).t().to(torch.uint8).cpu()
+    pred_frame = (prediction.frame > frame_threshold).t().to(torch.uint8).cpu()
+    pred_offset = (prediction.offset > onset_threshold).t().to(torch.uint8).cpu()
+    # ref_offset = (1 - reference.velocity).t().to(torch.uint8).cpu()
+    pred_stack = torch.stack([pred_onset, pred_frame, pred_offset], dim=2).cpu()
+    pred_image_data = pred_stack.flip(0).mul(255 // 2).numpy()
+
+    image_data = reference_image_data + pred_image_data
+
+    # image brightness enhancer
+    image = Image.fromarray(image_data, "RGB")
+    image.resize((image.size[0], image.size[1] * zoom))
     image.save(path)

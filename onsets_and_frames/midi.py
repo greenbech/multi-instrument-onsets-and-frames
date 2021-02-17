@@ -1,55 +1,81 @@
 import multiprocessing
 import sys
+from typing import List
 
-import mido
 import numpy as np
+import pretty_midi
 from joblib import Parallel, delayed
 from mido import Message, MidiFile, MidiTrack
 from mir_eval.util import hz_to_midi
+from pretty_midi import PrettyMIDI
 from tqdm import tqdm
 
+from .constants import MAX_MIDI, MIN_MIDI
 
-def parse_midi(path):
-    """open midi file and return np.array of (onset, offset, note, velocity) rows"""
-    midi = mido.MidiFile(path)
 
-    time = 0
-    sustain = False
-    events = []
-    for message in midi:
-        time += message.time
+def instrument_class_to_number(instrument_class: str) -> int:
+    instrument_classes = [i.lower().replace(" ", "-") for i in pretty_midi.constants.INSTRUMENT_CLASSES]
+    instrument_classes.append("drum")
+    instrument_classes.append("other")
+    return instrument_classes.index(instrument_class)
 
-        if message.type == "control_change" and message.control == 64 and (message.value >= 64) != sustain:
-            # sustain pedal state has just changed
-            sustain = message.value >= 64
-            event_type = "sustain_on" if sustain else "sustain_off"
-            event = dict(index=len(events), time=time, type=event_type, note=None, velocity=0)
-            events.append(event)
 
-        if "note" in message.type:
-            # MIDI offsets can be either 'note_off' events or 'note_on' with zero velocity
-            velocity = message.velocity if message.type == "note_on" else 0
-            event = dict(
-                index=len(events), time=time, type="note", note=message.note, velocity=velocity, sustain=sustain
-            )
-            events.append(event)
+def parse_midi(path, instruments: List[str], remove_midi_programs: List[int]):
+    """open midi file and return np.array of (instrument, onset, offset, note, velocity) rows"""
+    mid = PrettyMIDI(path)
 
-    notes = []
-    for i, onset in enumerate(events):
-        if onset["velocity"] == 0:
+    instruments = set(instruments)
+    add_drum = "drum" in instruments
+    if add_drum:
+        instruments.remove("drum")
+    add_other = "other" in instruments
+    if add_other:
+        instruments.remove("other")
+
+    instrument_classes = [i.lower().replace(" ", "-") for i in pretty_midi.constants.INSTRUMENT_CLASSES]
+    for instrument in instruments:
+        if instrument not in instrument_classes:
+            raise RuntimeError(f"Unsupported instrument class {instrument}. Avaliable classes are {instrument_classes}")
+
+    data = []
+    notes_out_of_range = set()
+    for instrument in mid.instruments:
+        if instrument.program in remove_midi_programs:
+            print(f"Removing midi program {instrument.program}")
             continue
+        if instrument.is_drum:
+            if not add_drum:
+                continue
+            instrument_class = "drum"
+        else:
+            instrument_class = (
+                pretty_midi.utilities.program_to_instrument_class(instrument.program).lower().replace(" ", "-")
+            )
+            if instrument_class not in instruments:
+                sound_effect_instument_class = pretty_midi.constants.INSTRUMENT_CLASSES[-1]
+                if (not add_other) or instrument_class == sound_effect_instument_class:
+                    continue
+                instrument_class = "other"
 
-        # find the next note_off message
-        offset = next(n for n in events[i + 1 :] if n["note"] == onset["note"] or n is events[-1])
-
-        if offset["sustain"] and offset is not events[-1]:
-            # if the sustain pedal is active at offset, find when the sustain ends
-            offset = next(n for n in events[offset["index"] + 1 :] if n["type"] == "sustain_off" or n is events[-1])
-
-        note = (onset["time"], offset["time"], onset["note"], onset["velocity"])
-        notes.append(note)
-
-    return np.array(notes)
+        for note in instrument.notes:
+            if int(note.pitch) in range(MIN_MIDI, MAX_MIDI + 1):
+                data.append(
+                    (
+                        instrument_class_to_number(instrument_class),
+                        note.start,
+                        note.end,
+                        int(note.pitch),
+                        int(note.velocity),
+                    )
+                )
+            else:
+                notes_out_of_range.add(int(note.pitch))
+    if len(notes_out_of_range) > 0:
+        print(
+            f"{len(notes_out_of_range)} notes out of MIDI range ({MIN_MIDI},{MAX_MIDI}) for file {path}. Excluded pitches: {notes_out_of_range}"
+        )
+    data.sort(key=lambda x: x[1])
+    return data
 
 
 def save_midi(path, pitches, intervals, velocities):
