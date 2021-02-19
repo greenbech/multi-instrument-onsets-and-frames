@@ -1,3 +1,4 @@
+import hashlib
 import os
 from abc import abstractmethod
 from collections import defaultdict
@@ -37,6 +38,14 @@ class Labels(NamedTuple):
     velocity: torch.ByteTensor  # [num_steps, midi_bins]
 
 
+def get_instruments_from_names(names):
+    if names == "bass":
+        return list(range(32, 37))
+    if names == "other":
+        return list(range(0, 112))
+    raise RuntimeError()
+
+
 class PianoRollAudioDataset(Dataset):
     def __init__(
         self,
@@ -46,7 +55,9 @@ class PianoRollAudioDataset(Dataset):
         sequence_length=None,
         seed=42,
         device=DEFAULT_DEVICE,
+        num_files=None,
         max_files_in_memory=-1,
+        reproducable_load_sequences=False,
     ):
         self.path = path
         self.groups = groups if groups is not None else self.available_groups()
@@ -57,12 +68,16 @@ class PianoRollAudioDataset(Dataset):
 
         self.file_list = []
         for group in groups:
-            self.file_list.extend(self.files(group))
+            for file in self.files(group):
+                if num_files is not None and len(self.file_list) > num_files:
+                    break
+                self.file_list.append(file)
         self.labels = [None] * len(self.file_list)
 
         self.max_files_in_memory = max_files_in_memory
         if self.max_files_in_memory > 0:
             self.audios = [None] * self.max_files_in_memory
+        self.reproducable_load_sequences = reproducable_load_sequences
 
     def __getitem__(self, index) -> AudioAndLabels:
         audio_path, tsv_path = self.file_list[index]
@@ -83,7 +98,13 @@ class PianoRollAudioDataset(Dataset):
 
         if self.sequence_length is not None:
             audio_length = torchaudio.info(audio_path).num_frames
-            step_begin = self.random.randint(audio_length - self.sequence_length) // HOP_LENGTH
+            possible_start_interval = audio_length - self.sequence_length
+            if self.reproducable_load_sequences:
+                step_begin = int(hashlib.sha256(audio_path.encode("utf-8")).hexdigest(), 16) % possible_start_interval
+            else:
+                step_begin = self.random.randint(possible_start_interval)
+            step_begin //= HOP_LENGTH
+
             n_steps = self.sequence_length // HOP_LENGTH
             step_end = step_begin + n_steps
 
@@ -194,7 +215,9 @@ class Slakh(PianoRollAudioDataset):
         sequence_length=None,
         seed=42,
         device=DEFAULT_DEVICE,
+        num_files=None,
         max_files_in_memory=-1,
+        reproducable_load_sequences=False,
     ):
         super().__init__(
             path,
@@ -203,7 +226,9 @@ class Slakh(PianoRollAudioDataset):
             sequence_length,
             seed,
             device,
+            num_files,
             max_files_in_memory,
+            reproducable_load_sequences,
         )
 
     @classmethod
@@ -224,7 +249,9 @@ class Slakh(PianoRollAudioDataset):
             tsv_filename = os.path.join(tail, head.replace(".mid", "") + f"_{self.instruments}.tsv")
             if not os.path.exists(tsv_filename):
                 midi_program_to_remove = self._not_rendered_midi_program(yaml_path)
-                midi = parse_midi(midi_path, self.instruments.split("_"), remove_midi_programs=midi_program_to_remove)
+
+                extract_instruments = get_instruments_from_names(self.instruments)
+                midi = parse_midi(midi_path, extract_instruments, remove_midi_programs=midi_program_to_remove)
                 np.savetxt(
                     tsv_filename, midi, fmt="%.6f", delimiter="\t", header="instrument\tonset\toffset\tnote\tvelocity"
                 )
@@ -248,6 +275,7 @@ class Slakh(PianoRollAudioDataset):
                 print([(i, pretty_midi.utilities.program_to_instrument_class(i)) for i in not_rendered_midi_programs])
                 print(f"Not rendered midi programs: {not_rendered_midi_programs}")
                 print(f"Num midi programs: {num_midi_programs}")
+                print(yaml_path)
                 breakpoint()
                 # raise RuntimeError("Ambigious not rendered midi program")
 

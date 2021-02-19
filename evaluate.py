@@ -30,6 +30,7 @@ def evaluate(
     onset_threshold=0.5,
     frame_threshold=0.5,
     save_path=None,
+    is_validation=False,
 ):
     metrics = defaultdict(list)
 
@@ -98,8 +99,9 @@ def evaluate(
             os.makedirs(save_path, exist_ok=True)
             label_path = os.path.join(save_path, label.path.replace(os.sep, "_") + ".label.png")
             save_pred_and_label_piano_roll(label_path, label.annotation, pred)
-            midi_path = os.path.join(save_path, os.path.basename(label.path) + ".pred.mid")
-            save_midi(midi_path, p_est, i_est, v_est)
+            if not is_validation:
+                midi_path = os.path.join(save_path, os.path.basename(label.path) + ".pred.mid")
+                save_midi(midi_path, p_est, i_est, v_est)
 
     return metrics
 

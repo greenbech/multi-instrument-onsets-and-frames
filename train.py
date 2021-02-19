@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 from evaluate import evaluate, print_metrics
 from onsets_and_frames.constants import MAX_MIDI, MIN_MIDI, N_MELS
-from onsets_and_frames.dataset import MAESTRO, MAPS, Slakh
+from onsets_and_frames.dataset import Slakh
 from onsets_and_frames.transcriber import OnsetsAndFrames
 from onsets_and_frames.utils import cycle, summary
 
@@ -36,8 +36,9 @@ def config():
     model_complexity = 48
 
     if torch.cuda.is_available() and torch.cuda.get_device_properties(torch.cuda.current_device()).total_memory < 10e9:
-        batch_size //= 2
+        # batch_size = 8
         sequence_length //= 2
+        model_complexity //= 2
         print(f"Reducing batch size to {batch_size} and sequence_length to {sequence_length} to save memory")
 
     learning_rate = 0.0006
@@ -48,8 +49,10 @@ def config():
 
     clip_gradient_norm = 3
 
-    validation_length = sequence_length
-    validation_interval = 500
+    validation_length = 4 * sequence_length
+    validation_interval = 1000
+    num_validation_files = 20
+    create_validation_images = True
 
     ex.observers.append(FileStorageObserver.create(logdir))
 
@@ -73,6 +76,8 @@ def train(
     clip_gradient_norm,
     validation_length,
     validation_interval,
+    num_validation_files,
+    create_validation_images,
 ):
     print_config(ex.current_run)
 
@@ -85,7 +90,13 @@ def train(
         dataset = Slakh(
             instruments=instruments, groups=train_groups, sequence_length=sequence_length, max_files_in_memory=200
         )
-        validation_dataset = Slakh(instruments=instruments, groups=validation_groups, sequence_length=validation_length)
+        validation_dataset = Slakh(
+            instruments=instruments,
+            groups=validation_groups,
+            sequence_length=validation_length,
+            num_files=num_validation_files,
+            reproducable_load_sequences=True,
+        )
 
     loader = DataLoader(dataset, batch_size, shuffle=True, drop_last=True)
 
@@ -121,7 +132,11 @@ def train(
         if i % validation_interval == 0:
             model.eval()
             with torch.no_grad():
-                metrics = evaluate(validation_dataset, model)
+                if create_validation_images:
+                    validation_path = os.path.join(logdir, f"model-{i}")
+                else:
+                    validation_path = None
+                metrics = evaluate(validation_dataset, model, save_path=validation_path, is_validation=True)
                 print_metrics(metrics, add_loss=True)
                 print()
                 for key, value in metrics.items():
