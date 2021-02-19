@@ -20,48 +20,30 @@ def instrument_class_to_number(instrument_class: str) -> int:
     return instrument_classes.index(instrument_class)
 
 
-def parse_midi(path, instruments: List[str], remove_midi_programs: List[int]):
+def parse_midi(path, extract_instruments: List[int], extract_drums=False, remove_midi_programs: List[int] = None):
     """open midi file and return np.array of (instrument, onset, offset, note, velocity) rows"""
     mid = PrettyMIDI(path)
-
-    instruments = set(instruments)
-    add_drum = "drum" in instruments
-    if add_drum:
-        instruments.remove("drum")
-    add_other = "other" in instruments
-    if add_other:
-        instruments.remove("other")
-
-    instrument_classes = [i.lower().replace(" ", "-") for i in pretty_midi.constants.INSTRUMENT_CLASSES]
-    for instrument in instruments:
-        if instrument not in instrument_classes:
-            raise RuntimeError(f"Unsupported instrument class {instrument}. Avaliable classes are {instrument_classes}")
 
     data = []
     notes_out_of_range = set()
     for instrument in mid.instruments:
+        if instrument.is_drum:
+            if not extract_drums:
+                continue
+            instrument.program = -1
+        else:
+            if instrument.program not in extract_instruments:
+                continue
+
         if instrument.program in remove_midi_programs:
             print(f"Removing midi program {instrument.program}")
             continue
-        if instrument.is_drum:
-            if not add_drum:
-                continue
-            instrument_class = "drum"
-        else:
-            instrument_class = (
-                pretty_midi.utilities.program_to_instrument_class(instrument.program).lower().replace(" ", "-")
-            )
-            if instrument_class not in instruments:
-                sound_effect_instument_class = pretty_midi.constants.INSTRUMENT_CLASSES[-1]
-                if (not add_other) or instrument_class == sound_effect_instument_class:
-                    continue
-                instrument_class = "other"
 
         for note in instrument.notes:
             if int(note.pitch) in range(MIN_MIDI, MAX_MIDI + 1):
                 data.append(
                     (
-                        instrument_class_to_number(instrument_class),
+                        instrument.program,
                         note.start,
                         note.end,
                         int(note.pitch),
