@@ -9,7 +9,6 @@ from mir_eval.util import midi_to_hz
 
 from onsets_and_frames.constants import HOP_LENGTH, MIN_MIDI, SAMPLE_RATE
 from onsets_and_frames.decoding import extract_notes
-from onsets_and_frames.mel import melspectrogram
 from onsets_and_frames.midi import save_midi
 from onsets_and_frames.utils import save_pianoroll, summary
 
@@ -18,30 +17,28 @@ def load_and_process_audio(flac_path, sequence_length, device):
 
     random = np.random.RandomState(seed=42)
 
-    audio, sr = soundfile.read(flac_path, dtype="int16")
+    audio_info = soundfile.info(flac_path)
+    sr = audio_info.samplerate
     assert sr == SAMPLE_RATE
 
-    audio = torch.ShortTensor(audio)
-
     if sequence_length is not None:
-        audio_length = len(audio)
+        audio_length = audio_info.frames
         step_begin = random.randint(audio_length - sequence_length) // HOP_LENGTH
 
         begin = step_begin * HOP_LENGTH
         end = begin + sequence_length
+        num_frames = end - begin
 
-        audio = audio[begin:end].to(device)
+        audio = torch.tensor(soundfile.read(flac_path, start=begin, frames=num_frames, dtype="float32")[0]).to(device)
     else:
-        audio = audio.to(device)
-
-    audio = audio.float().div_(32768.0)
+        audio = torch.tensor(soundfile.read(flac_path, dtype="float32")[0]).to(device)
 
     return audio
 
 
 def transcribe(model, audio):
 
-    mel = melspectrogram(audio.reshape(-1, audio.shape[-1])[:, :-1]).transpose(-1, -2)
+    mel = model.melspectrogram(audio).transpose(-1, -2)
     onset_pred, offset_pred, _, frame_pred, velocity_pred = model(mel)
 
     predictions = {
