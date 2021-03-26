@@ -1,6 +1,5 @@
 import os
 from datetime import datetime
-from pprint import pprint
 
 import numpy as np
 import torch
@@ -13,9 +12,9 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-from evaluate import evaluate
+from evaluate import evaluate, print_metrics
 from onsets_and_frames.constants import MAX_MIDI, MIN_MIDI, N_MELS
-from onsets_and_frames.dataset import MAESTRO, MAPS
+from onsets_and_frames.dataset import Slakh
 from onsets_and_frames.transcriber import OnsetsAndFrames
 from onsets_and_frames.utils import cycle, summary
 
@@ -24,20 +23,22 @@ ex = Experiment("train_transcriber")
 # flake8: noqa: F841
 @ex.config
 def config():
-    logdir = "runs/transcriber-" + datetime.now().strftime("%y%m%d-%H%M%S")
     device = "cuda" if torch.cuda.is_available() else "cpu"
     iterations = 500000
     resume_iteration = None
     checkpoint_interval = 1000
-    train_on = "MAESTRO"
+    dataset = "Slakh"
+    instruments = "bass"
+    logdir = f"runs/{instruments}-transcriber-" + datetime.now().strftime("%y%m%d-%H%M%S")
 
     batch_size = 8
     sequence_length = 327680
     model_complexity = 48
 
     if torch.cuda.is_available() and torch.cuda.get_device_properties(torch.cuda.current_device()).total_memory < 10e9:
-        batch_size //= 2
+        # batch_size = 8
         sequence_length //= 2
+        model_complexity //= 2
         print(f"Reducing batch size to {batch_size} and sequence_length to {sequence_length} to save memory")
 
     learning_rate = 0.0006
@@ -48,8 +49,10 @@ def config():
 
     clip_gradient_norm = 3
 
-    validation_length = sequence_length
-    validation_interval = 500
+    validation_length = 4 * sequence_length
+    validation_interval = 1000
+    num_validation_files = 20
+    create_validation_images = True
 
     ex.observers.append(FileStorageObserver.create(logdir))
 
@@ -61,7 +64,8 @@ def train(
     iterations,
     resume_iteration,
     checkpoint_interval,
-    train_on,
+    dataset,
+    instruments,
     batch_size,
     sequence_length,
     model_complexity,
@@ -72,6 +76,8 @@ def train(
     clip_gradient_norm,
     validation_length,
     validation_interval,
+    num_validation_files,
+    create_validation_images,
 ):
     print_config(ex.current_run)
 
@@ -80,20 +86,17 @@ def train(
 
     train_groups, validation_groups = ["train"], ["validation"]
 
-    if leave_one_out is not None:
-        all_years = {"2004", "2006", "2008", "2009", "2011", "2013", "2014", "2015", "2017"}
-        train_groups = list(all_years - {str(leave_one_out)})
-        validation_groups = [str(leave_one_out)]
-
-    if train_on == "MAESTRO":
-        dataset = MAESTRO(groups=train_groups, sequence_length=sequence_length)
-        validation_dataset = MAESTRO(groups=validation_groups, sequence_length=sequence_length)
-    else:
-        dataset = MAPS(
-            groups=["AkPnBcht", "AkPnBsdf", "AkPnCGdD", "AkPnStgb", "SptkBGAm", "SptkBGCl", "StbgTGd2"],
-            sequence_length=sequence_length,
+    if dataset == "Slakh":
+        dataset = Slakh(
+            instruments=instruments, groups=train_groups, sequence_length=sequence_length, max_files_in_memory=200
         )
-        validation_dataset = MAPS(groups=["ENSTDkAm", "ENSTDkCl"], sequence_length=validation_length)
+        validation_dataset = Slakh(
+            instruments=instruments,
+            groups=validation_groups,
+            sequence_length=validation_length,
+            num_files=num_validation_files,
+            reproducable_load_sequences=True,
+        )
 
     loader = DataLoader(dataset, batch_size, shuffle=True, drop_last=True)
 
@@ -110,7 +113,7 @@ def train(
     summary(model)
     scheduler = StepLR(optimizer, step_size=learning_rate_decay_steps, gamma=learning_rate_decay_rate)
 
-    loop = tqdm(range(resume_iteration + 1, iterations + 1))
+    loop = tqdm(range(resume_iteration + 1, iterations + 1), initial=resume_iteration + 1)
     for i, batch in zip(loop, cycle(loader)):
         _, losses = model.run_on_batch(batch)
 
@@ -129,15 +132,15 @@ def train(
         if i % validation_interval == 0:
             model.eval()
             with torch.no_grad():
-                metrics = evaluate(validation_dataset, model)
-                print(f"\n\nMetrics: ")
-                longest_key = max([len(key) for key in metrics])
-                for key, value in metrics.items():
-                    print(
-                        f"\t{key:>{longest_key}}: {100*np.min(value):.3f} {100*np.mean(value):.3f} {100*np.max(value):.3f}"
-                    )
-                    writer.add_scalar("validation/" + key.replace(" ", "_"), np.mean(value), global_step=i)
+                if create_validation_images:
+                    validation_path = os.path.join(logdir, f"model-{i}")
+                else:
+                    validation_path = None
+                metrics = evaluate(validation_dataset, model, save_path=validation_path, is_validation=True)
+                print_metrics(metrics, add_loss=True)
                 print()
+                for key, value in metrics.items():
+                    writer.add_scalar("validation/" + key.replace(" ", "_"), np.mean(value), global_step=i)
             model.train()
 
         if i % checkpoint_interval == 0:

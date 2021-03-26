@@ -9,12 +9,20 @@ from typing import Dict, Tuple
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torchaudio.transforms import MelSpectrogram
 
+from onsets_and_frames.constants import (
+    HOP_LENGTH,
+    MEL_FMAX,
+    MEL_FMIN,
+    N_MELS,
+    SAMPLE_RATE,
+    WINDOW_LENGTH,
+)
 from onsets_and_frames.data_classes import MusicAnnotation
 from onsets_and_frames.dataset import AudioAndLabels
 
 from .lstm import BiLSTM
-from .mel import melspectrogram
 
 
 class ConvStack(nn.Module):
@@ -59,6 +67,16 @@ class OnsetsAndFrames(nn.Module):
 
         model_size = model_complexity * 16
 
+        self.melspectrogram = MelSpectrogram(
+            sample_rate=SAMPLE_RATE,
+            n_fft=WINDOW_LENGTH,
+            win_length=WINDOW_LENGTH,
+            hop_length=HOP_LENGTH,
+            f_min=MEL_FMIN,
+            f_max=MEL_FMAX,
+            n_mels=N_MELS,
+        )
+
         def sequence_model(input_size: int, output_size: int):
             return BiLSTM(input_size, output_size // 2)
 
@@ -100,7 +118,7 @@ class OnsetsAndFrames(nn.Module):
         frame_label = batch.annotation.frame
         velocity_label = batch.annotation.velocity
 
-        mel = melspectrogram(audio_label.reshape(-1, audio_label.shape[-1])[:, :-1]).transpose(-1, -2)
+        mel = self.melspectrogram(audio_label.reshape(-1, audio_label.shape[-1])[:, :-1]).transpose(-1, -2)
         onset_pred, offset_pred, _, frame_pred, velocity_pred = self(mel)
 
         predictions = MusicAnnotation(
