@@ -1,14 +1,9 @@
-import multiprocessing
-import sys
 from typing import List
 
-import numpy as np
 import pretty_midi
-from joblib import Parallel, delayed
 from mido import Message, MidiFile, MidiTrack
 from mir_eval.util import hz_to_midi
 from pretty_midi import PrettyMIDI
-from tqdm import tqdm
 
 from .constants import MAX_MIDI, MIN_MIDI
 
@@ -92,24 +87,3 @@ def save_midi(path, pitches, intervals, velocities):
         last_tick = current_tick
 
     file.save(path)
-
-
-if __name__ == "__main__":
-
-    def process(input_file, output_file):
-        midi_data = parse_midi(input_file)
-        np.savetxt(output_file, midi_data, "%.6f", "\t", header="onset\toffset\tnote\tvelocity")
-
-    def files():
-        for input_file in tqdm(sys.argv[1:]):
-            if input_file.endswith(".mid"):
-                output_file = input_file[:-4] + ".tsv"
-            elif input_file.endswith(".midi"):
-                output_file = input_file[:-5] + ".tsv"
-            else:
-                print("ignoring non-MIDI file %s" % input_file, file=sys.stderr)
-                continue
-
-            yield (input_file, output_file)
-
-    Parallel(n_jobs=multiprocessing.cpu_count())(delayed(process)(in_file, out_file) for in_file, out_file in files())

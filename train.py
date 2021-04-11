@@ -11,6 +11,7 @@ from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
+from slakh_dataset import SlakhAmtDataset
 
 from evaluate import evaluate, print_metrics
 from onsets_and_frames.constants import MAX_MIDI, MIN_MIDI, N_MELS
@@ -27,9 +28,13 @@ def config():
     iterations = 500000
     resume_iteration = None
     checkpoint_interval = 1000
-    dataset = "Slakh"
-    instruments = "bass"
-    logdir = f"runs/{instruments}-transcriber-" + datetime.now().strftime("%y%m%d-%H%M%S")
+    dataset="Slakh"
+    path = "data/slakh2100_flac_16k"
+    split="redux"
+    audio="individual"
+    instrument="electric-bass"
+    skip_pitch_bend_tracks=True
+    logdir = f"runs/{instrument}-{audio}-transcriber-" + datetime.now().strftime("%y%m%d-%H%M%S")
 
     batch_size = 8
     sequence_length = 327680
@@ -65,7 +70,11 @@ def train(
     resume_iteration,
     checkpoint_interval,
     dataset,
-    instruments,
+    path,
+    split,
+    audio,
+    instrument,
+    skip_pitch_bend_tracks,
     batch_size,
     sequence_length,
     model_complexity,
@@ -87,15 +96,30 @@ def train(
     train_groups, validation_groups = ["train"], ["validation"]
 
     if dataset == "Slakh":
-        dataset = Slakh(
-            instruments=instruments, groups=train_groups, sequence_length=sequence_length, max_files_in_memory=200
+        dataset = SlakhAmtDataset(
+            path=path,
+            split=split,
+            audio=audio,
+            instrument=instrument,
+            groups=train_groups,
+            sequence_length=sequence_length,
+            max_files_in_memory=200,
+            skip_pitch_bend_tracks=skip_pitch_bend_tracks,
+            min_midi=MIN_MIDI,
+            max_midi=MAX_MIDI,
         )
-        validation_dataset = Slakh(
-            instruments=instruments,
+        validation_dataset = SlakhAmtDataset(
+            path=path,
+            split=split,
+            audio=audio,
+            instrument=instrument,
             groups=validation_groups,
             sequence_length=validation_length,
             num_files=num_validation_files,
             reproducable_load_sequences=True,
+            skip_pitch_bend_tracks=skip_pitch_bend_tracks,
+            min_midi=MIN_MIDI,
+            max_midi=MAX_MIDI,
         )
 
     loader = DataLoader(dataset, batch_size, shuffle=True, drop_last=True)
@@ -115,6 +139,7 @@ def train(
 
     loop = tqdm(range(resume_iteration + 1, iterations + 1), initial=resume_iteration + 1)
     for i, batch in zip(loop, cycle(loader)):
+        breakpoint()
         _, losses = model.run_on_batch(batch)
 
         loss = sum(losses.values())
