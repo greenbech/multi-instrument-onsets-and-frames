@@ -97,10 +97,11 @@ def evaluate(
 
         if save_path is not None:
             os.makedirs(save_path, exist_ok=True)
-            label_path = os.path.join(save_path, label.path.replace(os.sep, "_") + ".label.png")
+            label_name = label.paths[0].split(os.sep)[-2]
+            label_path = os.path.join(save_path, label_name + ".label.png")
             save_pred_and_label_piano_roll(label_path, label.annotation, pred)
             if not is_validation:
-                midi_path = os.path.join(save_path, os.path.basename(label.path) + ".pred.mid")
+                midi_path = os.path.join(save_path, label_name + ".pred.mid")
                 save_midi(midi_path, p_est, i_est, v_est)
 
     return metrics
