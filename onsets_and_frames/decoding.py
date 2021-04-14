@@ -27,7 +27,7 @@ def extract_notes(onsets, frames, velocity=None, onset_threshold=0.5, frame_thre
     pitches = []
     intervals = []
     velocities = []
-    default_velocity = 100
+    default_velocity = 0.9
 
     for nonzero in onset_diff.nonzero():
         frame = nonzero[0].item()
@@ -48,7 +48,7 @@ def extract_notes(onsets, frames, velocity=None, onset_threshold=0.5, frame_thre
         if offset > onset:
             pitches.append(pitch)
             intervals.append([onset, offset])
-            if velocities is not None:
+            if velocity is not None:
                 velocities.append(np.mean(velocity_samples) if len(velocity_samples) > 0 else 0)
             else:
                 velocities.append(default_velocity)

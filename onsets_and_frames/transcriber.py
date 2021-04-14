@@ -13,8 +13,10 @@ from torchaudio.transforms import MelSpectrogram
 
 from onsets_and_frames.constants import (
     HOP_LENGTH,
+    MAX_MIDI,
     MEL_FMAX,
     MEL_FMIN,
+    MIN_MIDI,
     N_MELS,
     SAMPLE_RATE,
     WINDOW_LENGTH,
@@ -62,20 +64,42 @@ class ConvStack(nn.Module):
 
 
 class OnsetsAndFrames(nn.Module):
-    def __init__(self, input_features, output_features, model_complexity=48, predict_velocity=False):
+    def __init__(
+        self,
+        input_features,
+        output_features,
+        model_complexity=48,
+        predict_velocity=False,
+        min_midi=MIN_MIDI,
+        max_midi=MAX_MIDI,
+        hop_length=HOP_LENGTH,
+        sample_rate=SAMPLE_RATE,
+        window_length=WINDOW_LENGTH,
+        mel_fmin=MEL_FMIN,
+        mel_fmax=MEL_FMAX,
+        n_mels=N_MELS,
+    ):
         self.predict_velocity = predict_velocity
+        self.min_midi = min_midi
+        self.max_midi = max_midi
+        self.hop_length = hop_length
+        self.sample_rate = sample_rate
+        self.window_length = window_length
+        self.mel_fmin = mel_fmin
+        self.mel_fmax = mel_fmax
+        self.n_mels = n_mels
         super().__init__()
 
         model_size = model_complexity * 16
 
         self.melspectrogram = MelSpectrogram(
-            sample_rate=SAMPLE_RATE,
-            n_fft=WINDOW_LENGTH,
-            win_length=WINDOW_LENGTH,
-            hop_length=HOP_LENGTH,
-            f_min=MEL_FMIN,
-            f_max=MEL_FMAX,
-            n_mels=N_MELS,
+            sample_rate=self.sample_rate,
+            n_fft=self.window_length,
+            win_length=self.window_length,
+            hop_length=self.hop_length,
+            f_min=self.mel_fmin,
+            f_max=self.mel_fmax,
+            n_mels=self.n_mels,
         )
 
         def sequence_model(input_size: int, output_size: int):
