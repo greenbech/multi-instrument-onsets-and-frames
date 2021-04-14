@@ -2,7 +2,7 @@ import numpy as np
 import torch
 
 
-def extract_notes(onsets, frames, velocity, onset_threshold=0.5, frame_threshold=0.5):
+def extract_notes(onsets, frames, velocity=None, onset_threshold=0.5, frame_threshold=0.5):
     """
     Finds the note timings based on the onsets and frames information
 
@@ -10,7 +10,7 @@ def extract_notes(onsets, frames, velocity, onset_threshold=0.5, frame_threshold
     ----------
     onsets: torch.FloatTensor, shape = [frames, bins]
     frames: torch.FloatTensor, shape = [frames, bins]
-    velocity: torch.FloatTensor, shape = [frames, bins]
+    velocity: Optional[torch.FloatTensor, shape = [frames, bins]]
     onset_threshold: float
     frame_threshold: float
 
@@ -27,6 +27,7 @@ def extract_notes(onsets, frames, velocity, onset_threshold=0.5, frame_threshold
     pitches = []
     intervals = []
     velocities = []
+    default_velocity = 100
 
     for nonzero in onset_diff.nonzero():
         frame = nonzero[0].item()
@@ -37,8 +38,9 @@ def extract_notes(onsets, frames, velocity, onset_threshold=0.5, frame_threshold
         velocity_samples = []
 
         while onsets[offset, pitch].item() or frames[offset, pitch].item():
-            if onsets[offset, pitch].item():
-                velocity_samples.append(velocity[offset, pitch].item())
+            if velocity is not None:
+                if onsets[offset, pitch].item():
+                    velocity_samples.append(velocity[offset, pitch].item())
             offset += 1
             if offset == onsets.shape[0]:
                 break
@@ -46,7 +48,10 @@ def extract_notes(onsets, frames, velocity, onset_threshold=0.5, frame_threshold
         if offset > onset:
             pitches.append(pitch)
             intervals.append([onset, offset])
-            velocities.append(np.mean(velocity_samples) if len(velocity_samples) > 0 else 0)
+            if velocities is not None:
+                velocities.append(np.mean(velocity_samples) if len(velocity_samples) > 0 else 0)
+            else:
+                velocities.append(default_velocity)
 
     return np.array(pitches), np.array(intervals), np.array(velocities)
 

@@ -28,7 +28,7 @@ soundfile = "^0.10.3"
 pretty_midi = "^0.2.9"
 torch = "^1.8.1"
 torchaudio = "^0.8.1"
-slakh-dataset = "^0.1.0"
+slakh-dataset = "^0.1.5"
 
 [tool.poetry.dev-dependencies]
 pre-commit = "^2.10.1"

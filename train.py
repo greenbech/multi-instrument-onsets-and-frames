@@ -59,6 +59,8 @@ def config():
     num_validation_files = 20
     create_validation_images = True
 
+    predict_velocity = False
+
     ex.observers.append(FileStorageObserver.create(logdir))
 
 
@@ -87,6 +89,7 @@ def train(
     validation_interval,
     num_validation_files,
     create_validation_images,
+    predict_velocity,
 ):
     print_config(ex.current_run)
 
@@ -103,7 +106,7 @@ def train(
             instrument=instrument,
             groups=train_groups,
             sequence_length=sequence_length,
-            max_files_in_memory=200,
+            max_files_in_memory=800,
             skip_pitch_bend_tracks=skip_pitch_bend_tracks,
             min_midi=MIN_MIDI,
             max_midi=MAX_MIDI,
@@ -125,7 +128,9 @@ def train(
     loader = DataLoader(dataset, batch_size, shuffle=True, drop_last=True)
 
     if resume_iteration is None:
-        model = OnsetsAndFrames(N_MELS, MAX_MIDI - MIN_MIDI + 1, model_complexity).to(device)
+        model = OnsetsAndFrames(
+            N_MELS, MAX_MIDI - MIN_MIDI + 1, model_complexity, predict_velocity=predict_velocity
+        ).to(device)
         optimizer = torch.optim.Adam(model.parameters(), learning_rate)
         resume_iteration = 0
     else:

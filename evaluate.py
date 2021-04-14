@@ -4,6 +4,7 @@ import sys
 from collections import defaultdict
 
 import numpy as np
+import slakh_dataset.dataset as dataset_module
 import torch
 from mir_eval.multipitch import evaluate as evaluate_frames
 from mir_eval.transcription import precision_recall_f1_overlap as evaluate_notes
@@ -14,7 +15,6 @@ from mir_eval.util import midi_to_hz
 from scipy.stats import hmean
 from tqdm import tqdm
 
-import onsets_and_frames.dataset as dataset_module
 from onsets_and_frames.constants import HOP_LENGTH, MIN_MIDI, SAMPLE_RATE
 from onsets_and_frames.decoding import extract_notes, notes_to_frames
 from onsets_and_frames.midi import save_midi
@@ -41,6 +41,8 @@ def evaluate(
             metrics[key].append(loss.item())
 
         for value in pred:
+            if value is None:
+                continue
             value.squeeze_(0).relu_()
 
         p_ref, i_ref, v_ref = extract_notes(label.annotation.onset, label.annotation.frame, label.annotation.velocity)
@@ -97,32 +99,36 @@ def evaluate(
 
         if save_path is not None:
             os.makedirs(save_path, exist_ok=True)
-            label_name = label.paths[0].split(os.sep)[-2]
-            label_path = os.path.join(save_path, label_name + ".label.png")
+            track = label.track
+            label_path = os.path.join(save_path, track + ".label.png")
             save_pred_and_label_piano_roll(label_path, label.annotation, pred)
             if not is_validation:
-                midi_path = os.path.join(save_path, label_name + ".pred.mid")
+                midi_path = os.path.join(save_path, track + ".pred.mid")
                 save_midi(midi_path, p_est, i_est, v_est)
 
     return metrics
 
 
-def evaluate_file(
+def evaluate_file_on_slakh_amt_dataset(
     model_file,
-    dataset,
-    dataset_group,
-    instruments,
-    sequence_length,
+    split,
+    audio,
+    instrument,
+    skip_pitch_bend_tracks,
     save_path,
     onset_threshold,
     frame_threshold,
     device,
 ):
-    dataset_class = getattr(dataset_module, dataset)
-    kwargs = {"instruments": instruments, "sequence_length": sequence_length, "device": device}
-    if dataset_group is not None:
-        kwargs["groups"] = [dataset_group]
-    dataset = dataset_class(**kwargs)
+    dataset = dataset_module.SlakhAmtDataset(
+        path="data/slakh2100_flac_16k",
+        split=split,
+        audio=audio,
+        instrument=instrument,
+        groups=["test"],
+        skip_pitch_bend_tracks=skip_pitch_bend_tracks,
+        device=device,
+    )
 
     model = torch.load(model_file, map_location=device).eval()
     summary(model)
@@ -144,14 +150,27 @@ def print_metrics(metrics, add_loss=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("model_file", type=str)
-    parser.add_argument("dataset", nargs="?", default="MAPS")
-    parser.add_argument("dataset_group", nargs="?", default=None)
-    parser.add_argument("instruments", type=str, default=None)
+    parser.add_argument("split", type=str)
+    parser.add_argument("audio", type=str)
+    parser.add_argument("--instrument", type=str, default="electric-bass")
+    parser.add_argument("--skipbend", action="store_true")
     parser.add_argument("--save-path", default=None)
     parser.add_argument("--sequence-length", default=None, type=int)
     parser.add_argument("--onset-threshold", default=0.5, type=float)
     parser.add_argument("--frame-threshold", default=0.5, type=float)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
 
+    args = parser.parse_args()
+
     with torch.no_grad():
-        evaluate_file(**vars(parser.parse_args()))
+        evaluate_file_on_slakh_amt_dataset(
+            model_file=args.model_file,
+            split=args.split,
+            audio=args.audio,
+            instrument=args.instrument,
+            skip_pitch_bend_tracks=args.skipbend,
+            save_path=args.save_path,
+            onset_threshold=args.onset_threshold,
+            frame_threshold=args.frame_threshold,
+            device=args.device,
+        )
