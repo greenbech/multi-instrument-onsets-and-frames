@@ -8,6 +8,17 @@ from torch.nn.modules.module import _addindent
 from onsets_and_frames.data_classes import MusicAnnotation
 
 
+# https://github.com/pseeth/autoclip/blob/master/autoclip.py
+def get_grad_norm(model):
+    total_norm = 0
+    for p in model.parameters():
+        if p.grad is not None:
+            param_norm = p.grad.data.norm(2)
+            total_norm += param_norm.item() ** 2
+    total_norm = total_norm ** (1.0 / 2)
+    return total_norm
+
+
 def cycle(iterable):
     while True:
         for item in iterable:
@@ -79,7 +90,6 @@ def save_pred_and_label_piano_roll(
     onset_threshold=0.5,
     offsets_threshold=0.5,
     frame_threshold=0.5,
-    zoom=4,
 ):
     """
     Saves a piano roll diagram
@@ -109,5 +119,4 @@ def save_pred_and_label_piano_roll(
 
     # image brightness enhancer
     image = Image.fromarray(image_data, "RGB")
-    image.resize((image.size[0], image.size[1] * zoom))
     image.save(path)

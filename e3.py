@@ -8,8 +8,9 @@ def main():
 
     ex.run(
         config_updates={
+            "path": "data/slakh2100_flac_16k_umx",
             "split": "redux",
-            "audio": "individual",
+            "audio": "stems/bass.flac",
             "instrument": "electric-bass",
             "skip_pitch_bend_tracks": True,
             "batch_size": batch_size,

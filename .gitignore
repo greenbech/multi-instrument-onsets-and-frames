@@ -8,3 +8,5 @@ runs
 settings.json
 t.py
 tmp/
+
+pretrained_models/

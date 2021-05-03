@@ -20,6 +20,8 @@ def main():
             "num_validation_files": 30,
             "create_validation_images": True,
             "predict_velocity": False,
+            "min_midi": 47,  # low B,
+            "max_midi": 91,  # high G (24th fret G string)
         }
     )
 

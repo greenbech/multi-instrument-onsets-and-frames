@@ -15,7 +15,7 @@ from mir_eval.util import midi_to_hz
 from scipy.stats import hmean
 from tqdm import tqdm
 
-from onsets_and_frames.constants import HOP_LENGTH, MIN_MIDI, SAMPLE_RATE
+from onsets_and_frames.constants import HOP_LENGTH, SAMPLE_RATE
 from onsets_and_frames.decoding import extract_notes, notes_to_frames
 from onsets_and_frames.midi import save_midi
 from onsets_and_frames.transcriber import OnsetsAndFrames
@@ -54,14 +54,14 @@ def evaluate(
         scaling = HOP_LENGTH / SAMPLE_RATE
 
         i_ref = (i_ref * scaling).reshape(-1, 2)
-        p_ref = np.array([midi_to_hz(MIN_MIDI + midi) for midi in p_ref])
+        p_ref = np.array([midi_to_hz(model.min_midi + midi) for midi in p_ref])
         i_est = (i_est * scaling).reshape(-1, 2)
-        p_est = np.array([midi_to_hz(MIN_MIDI + midi) for midi in p_est])
+        p_est = np.array([midi_to_hz(model.min_midi + midi) for midi in p_est])
 
         t_ref = t_ref.astype(np.float64) * scaling
-        f_ref = [np.array([midi_to_hz(MIN_MIDI + midi) for midi in freqs]) for freqs in f_ref]
+        f_ref = [np.array([midi_to_hz(model.min_midi + midi) for midi in freqs]) for freqs in f_ref]
         t_est = t_est.astype(np.float64) * scaling
-        f_est = [np.array([midi_to_hz(MIN_MIDI + midi) for midi in freqs]) for freqs in f_est]
+        f_est = [np.array([midi_to_hz(model.min_midi + midi) for midi in freqs]) for freqs in f_est]
 
         p, r, f, o = evaluate_notes(i_ref, p_ref, i_est, p_est, offset_ratio=None)
         metrics["metric/note/precision"].append(p)
@@ -119,20 +119,23 @@ def evaluate_file_on_slakh_amt_dataset(
     onset_threshold,
     frame_threshold,
     device,
+    path,
 ):
+
+    model = torch.load(model_file, map_location=device).eval()
+    summary(model)
+
     dataset = dataset_module.SlakhAmtDataset(
-        path="data/slakh2100_flac_16k",
+        path=path,
         split=split,
         audio=audio,
         instrument=instrument,
         groups=["test"],
         skip_pitch_bend_tracks=skip_pitch_bend_tracks,
         device=device,
+        min_midi=model.min_midi,
+        max_midi=model.max_midi,
     )
-
-    model = torch.load(model_file, map_location=device).eval()
-    summary(model)
-
     metrics = evaluate(tqdm(dataset), model, onset_threshold, frame_threshold, save_path)
     print_metrics(metrics)
 
@@ -159,6 +162,7 @@ if __name__ == "__main__":
     parser.add_argument("--onset-threshold", default=0.5, type=float)
     parser.add_argument("--frame-threshold", default=0.5, type=float)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument("--path", default="data/slakh2100_flac_16k")
 
     args = parser.parse_args()
 
@@ -173,4 +177,5 @@ if __name__ == "__main__":
             onset_threshold=args.onset_threshold,
             frame_threshold=args.frame_threshold,
             device=args.device,
+            path=args.path,
         )

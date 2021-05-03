@@ -1,12 +1,12 @@
 import argparse
 import os
-import sys
 
 import numpy as np
 import torch
 import torchaudio
 from mir_eval.util import midi_to_hz
 from slakh_dataset.data_classes import MusicAnnotation
+from tqdm import tqdm
 
 from onsets_and_frames.constants import HOP_LENGTH, MIN_MIDI, SAMPLE_RATE
 from onsets_and_frames.decoding import extract_notes
@@ -35,7 +35,7 @@ def load_and_process_audio(audio_path, sequence_length, device):
 
     if audio_info.num_channels == 2:
         audio = torch.mean(audio, 0)
-    audio = torch.unsqueeze(audio, 0)
+        audio = torch.unsqueeze(audio, 0)
 
     if sr != SAMPLE_RATE:
         audio = torchaudio.transforms.Resample(orig_freq=sr, new_freq=SAMPLE_RATE)(audio)
@@ -60,14 +60,24 @@ def transcribe(model, audio) -> MusicAnnotation:
 
 
 def transcribe_file(
-    model_file, audio_paths, save_path, midi_program, is_drum, sequence_length, onset_threshold, frame_threshold, device
+    model_file,
+    audio_paths,
+    save_folder,
+    midi_program,
+    is_drum,
+    sequence_length,
+    onset_threshold,
+    frame_threshold,
+    device,
 ):
 
     model = torch.load(model_file, map_location=device).eval()
     summary(model)
 
-    for audio_path in audio_paths:
-        print(f"Processing {audio_path}...", file=sys.stderr)
+    tqdm_range = tqdm(audio_paths)
+    for audio_path in tqdm_range:
+        tqdm_range.set_description(f"Processing {audio_path}")
+
         audio = load_and_process_audio(audio_path, sequence_length, device)
         predictions = transcribe(model, audio)
 
@@ -80,10 +90,11 @@ def transcribe_file(
         i_est = (i_est * scaling).reshape(-1, 2)
         p_est = np.array([midi_to_hz(MIN_MIDI + midi) for midi in p_est])
 
-        os.makedirs(save_path, exist_ok=True)
-        pred_path = os.path.join(save_path, os.path.basename(audio_path) + ".pred.png")
+        save_name = audio_path.replace(os.sep, "-")
+        os.makedirs(save_folder, exist_ok=True)
+        pred_path = os.path.join(save_folder, save_name + ".pred.png")
         save_pianoroll(pred_path, predictions)
-        midi_path = os.path.join(save_path, os.path.basename(audio_path) + ".pred.mid")
+        midi_path = os.path.join(save_folder, save_name + ".pred.mid")
         save_midi(
             midi_path,
             p_est,
@@ -98,7 +109,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("model_file", type=str)
     parser.add_argument("audio_paths", type=str, nargs="+")
-    parser.add_argument("--save-path", type=str, default=".")
+    parser.add_argument("--save-folder", type=str, default="tmp")
     parser.add_argument("--midi-program", default=0, type=int)
     parser.add_argument("--is_drum", action="store_true")
     parser.add_argument("--sequence-length", default=None, type=int)
