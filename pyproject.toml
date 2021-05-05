@@ -22,13 +22,13 @@ tqdm = ">=4.28.1"
 mir-eval = {git = "https://github.com/craffel/mir_eval.git"}
 mido = ">=1.2.9"
 Pillow = ">=6.2.0"
-tensorboard = "^2.4.1"
 sacred = "^0.8.2"
 soundfile = "^0.10.3"
 pretty_midi = "^0.2.9"
 torch = "^1.8.1"
 torchaudio = "^0.8.1"
 slakh-dataset = "^0.1.5"
+tensorboard = "^2.5.0"
 
 [tool.poetry.dev-dependencies]
 pre-commit = "^2.10.1"

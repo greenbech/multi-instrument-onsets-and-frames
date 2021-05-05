@@ -140,14 +140,14 @@ def evaluate_file_on_slakh_amt_dataset(
     print_metrics(metrics)
 
 
-def print_metrics(metrics, add_loss=False):
+def print_metrics(metrics, add_loss=False, file=sys.stdout):
     for key, values in metrics.items():
         if add_loss and key.startswith("loss/"):
             category, name = key.split("/")
-            print(f"{category:>32} {name:25}: {np.mean(values):.3f} ± {np.std(values):.3f}")
+            print(f"{category:>32} {name:25}: {np.mean(values):.3f} ± {np.std(values):.3f}", file=file)
         if key.startswith("metric/"):
             _, category, name = key.split("/")
-            print(f"{category:>32} {name:25}: {np.mean(values):.3f} ± {np.std(values):.3f}")
+            print(f"{category:>32} {name:25}: {np.mean(values):.3f} ± {np.std(values):.3f}", file=file)
 
 
 if __name__ == "__main__":
@@ -165,6 +165,13 @@ if __name__ == "__main__":
     parser.add_argument("--path", default="data/slakh2100_flac_16k")
 
     args = parser.parse_args()
+
+    if args.save_path is None:
+        args.save_path = os.path.join(
+            os.path.dirname(args.model_file),
+            f"{args.split}-{args.audio.replace(os.sep, '_')}-{args.instrument}-{args.skipbend}",
+        )
+    print(args.save_path)
 
     with torch.no_grad():
         evaluate_file_on_slakh_amt_dataset(

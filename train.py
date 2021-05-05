@@ -1,4 +1,5 @@
 import os
+import sys
 from datetime import datetime
 
 import numpy as np
@@ -23,7 +24,7 @@ ex = Experiment("train_transcriber")
 @ex.config
 def config():
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    iterations = 500000
+    iterations = 20000
     resume_iteration = None
     checkpoint_interval = 1000
     dataset = "Slakh"
@@ -39,9 +40,8 @@ def config():
     model_complexity = 48
 
     if torch.cuda.is_available() and torch.cuda.get_device_properties(torch.cuda.current_device()).total_memory < 10e9:
-        # batch_size = 8
+        batch_size //= 2
         sequence_length //= 2
-        model_complexity //= 2
         print(f"Reducing batch size to {batch_size} and sequence_length to {sequence_length} to save memory")
 
     learning_rate = 0.0006
@@ -50,11 +50,11 @@ def config():
 
     leave_one_out = None
 
-    clip_gradient_norm = 3
+    auto_clip_gradient = True
 
     validation_length = 4 * sequence_length
     validation_interval = 1000
-    num_validation_files = 20
+    num_validation_files = 40
     create_validation_images = True
 
     predict_velocity = False
@@ -84,7 +84,7 @@ def train(
     learning_rate_decay_steps,
     learning_rate_decay_rate,
     leave_one_out,
-    clip_gradient_norm,
+    auto_clip_gradient,
     validation_length,
     validation_interval,
     num_validation_files,
@@ -112,6 +112,7 @@ def train(
             skip_pitch_bend_tracks=skip_pitch_bend_tracks,
             min_midi=min_midi,
             max_midi=max_midi,
+            skip_missing_tracks=True,
         )
         validation_dataset = SlakhAmtDataset(
             path=path,
@@ -125,6 +126,7 @@ def train(
             skip_pitch_bend_tracks=skip_pitch_bend_tracks,
             min_midi=min_midi,
             max_midi=max_midi,
+            skip_missing_tracks=True,
         )
 
     loader = DataLoader(dataset, batch_size, shuffle=True, drop_last=True)
@@ -160,7 +162,7 @@ def train(
         loss.backward()
 
         obs_grad_norm = get_grad_norm(model=model)
-        if clip_gradient_norm:
+        if auto_clip_gradient:
             grad_history.append(obs_grad_norm)
             clip_value = np.percentile(grad_history, 10)
             torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value)
@@ -181,7 +183,7 @@ def train(
                 else:
                     validation_path = None
                 metrics = evaluate(validation_dataset, model, save_path=validation_path, is_validation=True)
-                print_metrics(metrics, add_loss=True)
+                print_metrics(metrics, add_loss=True, file=sys.stderr)
                 print()
                 for key, value in metrics.items():
                     writer.add_scalar("validation/" + key.replace(" ", "_"), np.mean(value), global_step=i)
