@@ -10,8 +10,9 @@ def main():
         config_updates={
             "split": "redux",
             "audio": "mix.flac",
-            "instrument": "electric-bass",
-            "max_harmony": 2,
+            "instrument": "all",
+            "midi_programs": range(96),
+            "max_harmony": None,
             "skip_pitch_bend_tracks": True,
             "batch_size": batch_size,
             "sequence_length": sequence_length,
@@ -21,8 +22,8 @@ def main():
             "num_validation_files": 50,
             "create_validation_images": True,
             "predict_velocity": False,
-            "min_midi": 35,  # B1, https://github.com/ethman/slakh-generation/issues/2
-            "max_midi": 67,  # G4 (12th fret G string)
+            "min_midi": 28,  # E1
+            "max_midi": 96,  # C7
         }
     )
 

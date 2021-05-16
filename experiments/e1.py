@@ -11,17 +11,18 @@ def main():
             "split": "redux",
             "audio": "individual",
             "instrument": "electric-bass",
+            "max_harmony": 2,
             "skip_pitch_bend_tracks": True,
             "batch_size": batch_size,
             "sequence_length": sequence_length,
             "model_complexity": model_complexity,
             "validation_length": 4 * sequence_length,
-            "validation_interval": 1000,
+            "validation_interval": 500,
             "num_validation_files": 50,
             "create_validation_images": True,
             "predict_velocity": False,
-            "min_midi": 47,  # low B,
-            "max_midi": 91,  # high G (24th fret G string)
+            "min_midi": 35,  # B1, https://github.com/ethman/slakh-generation/issues/2
+            "max_midi": 67,  # G4 (12th fret G string)
         }
     )
 

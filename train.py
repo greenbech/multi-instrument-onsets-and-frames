@@ -32,8 +32,10 @@ def config():
     split = "redux"
     audio = "individual"
     instrument = "electric-bass"
+    midi_programs = None
+    max_harmony = 2
     skip_pitch_bend_tracks = True
-    logdir = f"runs/{instrument}-{audio}-transcriber-" + datetime.now().strftime("%y%m%d-%H%M%S")
+    logdir = f"runs/{instrument}-{audio.replace(os.sep, '-')}-transcriber-" + datetime.now().strftime("%y%m%d-%H%M%S")
 
     batch_size = 8
     sequence_length = 327680
@@ -76,6 +78,8 @@ def train(
     split,
     audio,
     instrument,
+    midi_programs,
+    max_harmony,
     skip_pitch_bend_tracks,
     batch_size,
     sequence_length,
@@ -93,6 +97,7 @@ def train(
     min_midi,
     max_midi,
 ):
+
     print_config(ex.current_run)
 
     os.makedirs(logdir, exist_ok=True)
@@ -100,12 +105,15 @@ def train(
 
     train_groups, validation_groups = ["train"], ["validation"]
 
+    if midi_programs is not None:
+        instrument = None
     if dataset == "Slakh":
         dataset = SlakhAmtDataset(
             path=path,
             split=split,
             audio=audio,
             instrument=instrument,
+            midi_programs=midi_programs,
             groups=train_groups,
             sequence_length=sequence_length,
             max_files_in_memory=800,
@@ -113,12 +121,14 @@ def train(
             min_midi=min_midi,
             max_midi=max_midi,
             skip_missing_tracks=True,
+            max_harmony=max_harmony,
         )
         validation_dataset = SlakhAmtDataset(
             path=path,
             split=split,
             audio=audio,
             instrument=instrument,
+            midi_programs=midi_programs,
             groups=validation_groups,
             sequence_length=validation_length,
             num_files=num_validation_files,
@@ -127,6 +137,7 @@ def train(
             min_midi=min_midi,
             max_midi=max_midi,
             skip_missing_tracks=True,
+            max_harmony=max_harmony,
         )
 
     loader = DataLoader(dataset, batch_size, shuffle=True, drop_last=True)

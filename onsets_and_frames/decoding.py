@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from slakh_dataset.data_classes import MusicAnnotation
 
 
 def extract_notes(onsets, frames, velocity=None, onset_threshold=0.5, frame_threshold=0.5):
@@ -20,7 +21,14 @@ def extract_notes(onsets, frames, velocity=None, onset_threshold=0.5, frame_thre
     intervals: np.ndarray of rows containing (onset_index, offset_index)
     velocities: np.ndarray of velocity values
     """
-    onsets = (onsets > onset_threshold).cpu().to(torch.uint8)
+    # Increase onset value to position with higer frames values after
+    frames_diff_avg = torch.cat([(frames[1:, :] + frames[:-1, :]) / 2, frames[-1:, :]], dim=0)
+    onsets_copy = onsets.clone().detach()
+    onsets_copy_modified = onsets_copy + (1 / frame_threshold * frames_diff_avg) * onsets_copy
+
+    onsets_copy_modified[1:, :] -= torch.clip(frames[:-1, :] - frame_threshold, 0)
+
+    onsets = (onsets_copy_modified > onset_threshold).cpu().to(torch.uint8)
     frames = (frames > frame_threshold).cpu().to(torch.uint8)
     onset_diff = torch.cat([onsets[:1, :], onsets[1:, :] - onsets[:-1, :]], dim=0) == 1
 
@@ -45,7 +53,7 @@ def extract_notes(onsets, frames, velocity=None, onset_threshold=0.5, frame_thre
             if offset == onsets.shape[0]:
                 break
 
-        if offset > onset:
+        if offset > onset + 1:
             pitches.append(pitch)
             intervals.append([onset, offset])
             if velocity is not None:
@@ -78,3 +86,27 @@ def notes_to_frames(pitches, intervals, shape):
     time = np.arange(roll.shape[0])
     freqs = [roll[t, :].nonzero()[0] for t in time]
     return time, freqs
+
+
+def notes_music_annotation(pitches, intervals, shape) -> MusicAnnotation:
+    """
+    Takes lists specifying notes sequences and return
+
+    Parameters
+    ----------
+    pitches: list of pitch bin indices
+    intervals: list of [onset, offset] ranges of bin indices
+    shape: the shape of the original piano roll, [n_frames, n_bins]
+    """
+    onset_torch = torch.zeros(tuple(shape))
+    frame_torch = torch.zeros(tuple(shape))
+    for pitch, (onset, offset) in zip(pitches, intervals):
+        frame_torch[onset:offset, pitch] = 1
+        onset_torch[onset : onset + 1, pitch] = 1
+
+    return MusicAnnotation(
+        onset=onset_torch,
+        offset=None,
+        frame=frame_torch,
+        velocity=None,
+    )

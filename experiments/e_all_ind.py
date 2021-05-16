@@ -6,12 +6,19 @@ def main():
     sequence_length = 327680
     model_complexity = 48
 
+    piano_midis = list(range(8))
+    guitar_midis = list(range(24, 32))
+    bass_midis = list(range(32, 40))
+    brass_midis = list(range(57, 64))
+    reed_midis = list(range(64, 72))
+
     ex.run(
         config_updates={
             "split": "redux",
-            "audio": "mix.flac",
-            "instrument": "electric-bass",
-            "max_harmony": 2,
+            "audio": "individual",
+            "instrument": "all-ind",
+            "midi_programs": piano_midis + guitar_midis + bass_midis + brass_midis + reed_midis,
+            "max_harmony": None,
             "skip_pitch_bend_tracks": True,
             "batch_size": batch_size,
             "sequence_length": sequence_length,
@@ -21,8 +28,8 @@ def main():
             "num_validation_files": 50,
             "create_validation_images": True,
             "predict_velocity": False,
-            "min_midi": 35,  # B1, https://github.com/ethman/slakh-generation/issues/2
-            "max_midi": 67,  # G4 (12th fret G string)
+            "min_midi": 28,  # E1
+            "max_midi": 96,  # C7
         }
     )
 

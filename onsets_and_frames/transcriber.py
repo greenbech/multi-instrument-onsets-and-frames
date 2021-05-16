@@ -4,6 +4,7 @@ A rough translation of Magenta's Onsets and Frames implementation [1].
     [1] https://github.com/tensorflow/magenta/blob/master/magenta/models/onsets_frames_transcription/model.py
 """
 
+from math import exp, log
 from typing import Dict, Tuple
 
 import torch
@@ -88,6 +89,9 @@ class OnsetsAndFrames(nn.Module):
         self.mel_fmin = mel_fmin
         self.mel_fmax = mel_fmax
         self.n_mels = n_mels
+        self.max_mel_value = log(self.window_length)
+        self.min_mel_value = -self.max_mel_value
+        self._mel_clamp_value = exp(-log(self.window_length))
         super().__init__()
 
         model_size = model_complexity * 16
@@ -97,6 +101,7 @@ class OnsetsAndFrames(nn.Module):
             n_fft=self.window_length,
             win_length=self.window_length,
             hop_length=self.hop_length,
+            power=1.0,
             f_min=self.mel_fmin,
             f_max=self.mel_fmax,
             n_mels=self.n_mels,
@@ -140,6 +145,11 @@ class OnsetsAndFrames(nn.Module):
             velocity_pred = None
         return onset_pred, offset_pred, activation_pred, frame_pred, velocity_pred
 
+    def mel(self, wav: torch.tensor) -> torch.tensor:
+        mel_output = self.melspectrogram(wav.reshape(-1, wav.shape[-1])[:, :-1]).transpose(-1, -2)
+        mel_output = torch.log(torch.clamp(mel_output, min=self._mel_clamp_value))
+        return mel_output
+
     def run_on_batch(self, batch: AudioAndLabels) -> Tuple[MusicAnnotation, Dict[str, any]]:
         audio_label = batch.audio
         onset_label = batch.annotation.onset
@@ -147,7 +157,7 @@ class OnsetsAndFrames(nn.Module):
         frame_label = batch.annotation.frame
         velocity_label = batch.annotation.velocity
 
-        mel = self.melspectrogram(audio_label.reshape(-1, audio_label.shape[-1])[:, :-1]).transpose(-1, -2)
+        mel = self.mel(audio_label)
         onset_pred, offset_pred, _, frame_pred, velocity_pred = self(mel)
 
         if self.predict_velocity:
