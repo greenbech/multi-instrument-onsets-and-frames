@@ -1,9 +1,13 @@
 import argparse
+import csv
 import os
 import sys
 from collections import defaultdict
+from datetime import datetime
+from time import gmtime, strftime
 
 import numpy as np
+import slakh_dataset.dataset as dataset_module
 import torch
 from mir_eval.multipitch import evaluate as evaluate_frames
 from mir_eval.transcription import precision_recall_f1_overlap as evaluate_notes
@@ -14,9 +18,12 @@ from mir_eval.util import midi_to_hz
 from scipy.stats import hmean
 from tqdm import tqdm
 
-import onsets_and_frames.dataset as dataset_module
-from onsets_and_frames.constants import HOP_LENGTH, MIN_MIDI, SAMPLE_RATE
-from onsets_and_frames.decoding import extract_notes, notes_to_frames
+from onsets_and_frames.constants import HOP_LENGTH, SAMPLE_RATE
+from onsets_and_frames.decoding import (
+    extract_notes,
+    notes_music_annotation,
+    notes_to_frames,
+)
 from onsets_and_frames.midi import save_midi
 from onsets_and_frames.transcriber import OnsetsAndFrames
 from onsets_and_frames.utils import save_pred_and_label_piano_roll, summary
@@ -34,6 +41,7 @@ def evaluate(
 ):
     metrics = defaultdict(list)
 
+    csvfile = None
     for label in tqdm(data):
         pred, losses = model.run_on_batch(label)
 
@@ -41,10 +49,15 @@ def evaluate(
             metrics[key].append(loss.item())
 
         for value in pred:
+            if value is None:
+                continue
             value.squeeze_(0).relu_()
 
         p_ref, i_ref, v_ref = extract_notes(label.annotation.onset, label.annotation.frame, label.annotation.velocity)
         p_est, i_est, v_est = extract_notes(pred.onset, pred.frame, pred.velocity, onset_threshold, frame_threshold)
+
+        pred_notes = notes_music_annotation(p_est, i_est, pred.frame.shape)
+        mel = model.mel(label.audio)
 
         t_ref, f_ref = notes_to_frames(p_ref, i_ref, label.annotation.frame.shape)
         t_est, f_est = notes_to_frames(p_est, i_est, pred.frame.shape)
@@ -52,14 +65,14 @@ def evaluate(
         scaling = HOP_LENGTH / SAMPLE_RATE
 
         i_ref = (i_ref * scaling).reshape(-1, 2)
-        p_ref = np.array([midi_to_hz(MIN_MIDI + midi) for midi in p_ref])
+        p_ref = np.array([midi_to_hz(model.min_midi + midi) for midi in p_ref])
         i_est = (i_est * scaling).reshape(-1, 2)
-        p_est = np.array([midi_to_hz(MIN_MIDI + midi) for midi in p_est])
+        p_est = np.array([midi_to_hz(model.min_midi + midi) for midi in p_est])
 
         t_ref = t_ref.astype(np.float64) * scaling
-        f_ref = [np.array([midi_to_hz(MIN_MIDI + midi) for midi in freqs]) for freqs in f_ref]
+        f_ref = [np.array([midi_to_hz(model.min_midi + midi) for midi in freqs]) for freqs in f_ref]
         t_est = t_est.astype(np.float64) * scaling
-        f_est = [np.array([midi_to_hz(MIN_MIDI + midi) for midi in freqs]) for freqs in f_est]
+        f_est = [np.array([midi_to_hz(model.min_midi + midi) for midi in freqs]) for freqs in f_est]
 
         p, r, f, o = evaluate_notes(i_ref, p_ref, i_est, p_est, offset_ratio=None)
         metrics["metric/note/precision"].append(p)
@@ -97,60 +110,136 @@ def evaluate(
 
         if save_path is not None:
             os.makedirs(save_path, exist_ok=True)
-            label_path = os.path.join(save_path, label.path.replace(os.sep, "_") + ".label.png")
-            save_pred_and_label_piano_roll(label_path, label.annotation, pred)
+            track = label.track
+
+            if csvfile is None:
+                csvfile = open(os.path.join(save_path, "metrics.csv"), "w")
+                fieldnames = ["track"] + list(metrics.keys())
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                writer.writeheader()
+
+            csv_row_dict = {"track": track}
+            for key in metrics:
+                csv_row_dict[key] = metrics[key][-1]
+            writer.writerow(csv_row_dict)
+            csvfile.flush()
+
+            start_time = strftime("%M:%S", gmtime(label.start_time))
+            end_time = strftime("%M:%S", gmtime(label.end_time))
+            frame_f1 = metrics["metric/frame/f1"][-1]
+            note_f1 = metrics["metric/note/f1"][-1]
+            note_w_offset_f1 = metrics["metric/note-with-offsets/f1"][-1]
+            file_name = f"{track}-{start_time}-{end_time}-F1s:{frame_f1:.3f}|{note_f1:.3f}|{note_w_offset_f1:.3f}"
+            label_path = os.path.join(save_path, file_name + ".label.png")
+            save_pred_and_label_piano_roll(label_path, mel, model, label.annotation, pred, pred_notes)
             if not is_validation:
-                midi_path = os.path.join(save_path, os.path.basename(label.path) + ".pred.mid")
+                midi_path = os.path.join(save_path, file_name + ".pred.mid")
                 save_midi(midi_path, p_est, i_est, v_est)
 
+    if save_path is not None:
+        with open(os.path.join(save_path, "evaluation.txt"), "w") as f:
+            out_string = metrics_to_string(metrics)
+            print(out_string, file=f)
+    if csvfile is not None:
+        csvfile.close()
     return metrics
 
 
-def evaluate_file(
+def evaluate_file_on_slakh_amt_dataset(
     model_file,
-    dataset,
-    dataset_group,
-    instruments,
-    sequence_length,
+    group,
+    split,
+    audio,
+    instrument,
+    skip_pitch_bend_tracks,
+    max_harmony,
     save_path,
     onset_threshold,
     frame_threshold,
     device,
+    path,
 ):
-    dataset_class = getattr(dataset_module, dataset)
-    kwargs = {"instruments": instruments, "sequence_length": sequence_length, "device": device}
-    if dataset_group is not None:
-        kwargs["groups"] = [dataset_group]
-    dataset = dataset_class(**kwargs)
 
     model = torch.load(model_file, map_location=device).eval()
     summary(model)
 
+    # piano_midis = list(range(8))
+    # guitar_midis = list(range(24, 32))
+    # bass_midis = list(range(32, 40))
+    # brass_midis = list(range(57, 64))
+    # reed_midis = list(range(64, 72))
+    dataset = dataset_module.SlakhAmtDataset(
+        path=path,
+        split=split,
+        audio=audio,
+        instrument=instrument,
+        # midi_programs=piano_midis + guitar_midis + bass_midis + brass_midis + reed_midis,
+        groups=[group],
+        skip_pitch_bend_tracks=skip_pitch_bend_tracks,
+        device=device,
+        min_midi=model.min_midi,
+        max_midi=model.max_midi,
+        max_harmony=max_harmony,
+    )
     metrics = evaluate(tqdm(dataset), model, onset_threshold, frame_threshold, save_path)
     print_metrics(metrics)
 
 
-def print_metrics(metrics, add_loss=False):
+def print_metrics(metrics, add_loss=False, file=sys.stdout):
+    out_string = metrics_to_string(metrics=metrics, add_loss=add_loss)
+    print(out_string, file=file)
+
+
+def metrics_to_string(metrics, add_loss=False):
+    out_strings = []
     for key, values in metrics.items():
         if add_loss and key.startswith("loss/"):
             category, name = key.split("/")
-            print(f"{category:>32} {name:25}: {np.mean(values):.3f} ± {np.std(values):.3f}")
+            out_strings.append(f"{category:>32} {name:25}: {np.mean(values):.3f} ± {np.std(values):.3f}")
         if key.startswith("metric/"):
             _, category, name = key.split("/")
-            print(f"{category:>32} {name:25}: {np.mean(values):.3f} ± {np.std(values):.3f}")
+            out_strings.append(f"{category:>32} {name:25}: {np.mean(values):.3f} ± {np.std(values):.3f}")
+    out_string = "\n".join(out_strings)
+    return out_string
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("model_file", type=str)
-    parser.add_argument("dataset", nargs="?", default="MAPS")
-    parser.add_argument("dataset_group", nargs="?", default=None)
-    parser.add_argument("instruments", type=str, default=None)
+    parser.add_argument("split", type=str)
+    parser.add_argument("audio", type=str)
+    parser.add_argument("--group", default="test", type=str)
+    parser.add_argument("--instrument", type=str, default="electric-bass")
+    parser.add_argument("--skipbend", action="store_true")
     parser.add_argument("--save-path", default=None)
     parser.add_argument("--sequence-length", default=None, type=int)
     parser.add_argument("--onset-threshold", default=0.5, type=float)
     parser.add_argument("--frame-threshold", default=0.5, type=float)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument("--path", default="data/slakh2100_flac_16k")
+    parser.add_argument("--max-harmony", default=None, type=int)
+
+    args = parser.parse_args()
+
+    if args.save_path is None:
+        args.save_path = os.path.join(
+            os.path.dirname(args.model_file),
+            f"{os.path.basename(args.model_file)}-{datetime.now().strftime('%y%m%d-%H%M%S')}-{args.group}-{args.split}-{args.audio.replace(os.sep, '_')}-{args.instrument}-{args.skipbend}-maxharm_{args.max_harmony}-o_thld_{args.onset_threshold}_f_thld_{args.frame_threshold}",
+        )
+    print(args.save_path)
 
     with torch.no_grad():
-        evaluate_file(**vars(parser.parse_args()))
+        evaluate_file_on_slakh_amt_dataset(
+            model_file=args.model_file,
+            group=args.group,
+            split=args.split,
+            audio=args.audio,
+            instrument=args.instrument,
+            skip_pitch_bend_tracks=args.skipbend,
+            max_harmony=args.max_harmony,
+            save_path=args.save_path,
+            onset_threshold=args.onset_threshold,
+            frame_threshold=args.frame_threshold,
+            device=args.device,
+            path=args.path,
+        )

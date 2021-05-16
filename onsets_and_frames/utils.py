@@ -1,11 +1,23 @@
 import sys
 from functools import reduce
 
+import numpy as np
 import torch
 from PIL import Image
 from torch.nn.modules.module import _addindent
 
 from onsets_and_frames.data_classes import MusicAnnotation
+
+
+# https://github.com/pseeth/autoclip/blob/master/autoclip.py
+def get_grad_norm(model):
+    total_norm = 0
+    for p in model.parameters():
+        if p.grad is not None:
+            param_norm = p.grad.data.norm(2)
+            total_norm += param_norm.item() ** 2
+    total_norm = total_norm ** (1.0 / 2)
+    return total_norm
 
 
 def cycle(iterable):
@@ -60,64 +72,71 @@ def summary(model, file=sys.stdout):
     return count
 
 
-def save_pianoroll(path, onsets, frames, onset_threshold=0.5, frame_threshold=0.5, zoom=4):
+def save_pianoroll(path, mel, model, prediction: MusicAnnotation, prediction_notes: MusicAnnotation):
     """
     Saves a piano roll diagram
-
-    Parameters
-    ----------
-    path: str
-    onsets: torch.FloatTensor, shape = [frames, bins]
-    frames: torch.FloatTensor, shape = [frames, bins]
-    onset_threshold: float
-    frame_threshold: float
-    zoom: int
     """
-    onsets = (1 - (onsets.t() > onset_threshold).to(torch.uint8)).cpu()
-    frames = (1 - (frames.t() > frame_threshold).to(torch.uint8)).cpu()
-    both = 1 - (1 - onsets) * (1 - frames)
-    image = torch.stack([onsets, frames, both], dim=2).flip(0).mul(255).numpy()
-    image = Image.fromarray(image, "RGB")
-    image = image.resize((image.size[0], image.size[1] * zoom))
+    mel_image = create_mel_np_image(mel, model)
+    prediction_weights_np = music_annotation_to_numpy_image(prediction)
+    line = 100 * np.ones((1, prediction_weights_np.shape[1], prediction_weights_np.shape[2]), dtype=np.uint8)
+
+    pred_frames = (255 // 2 * prediction_notes.frame.t()).to(torch.uint8).cpu()
+    pred_onset = (255 // 2 * prediction_notes.onset.t()).to(torch.uint8).cpu()
+
+    pred_image = (
+        torch.stack([pred_frames + pred_onset, pred_frames + pred_onset, pred_frames + pred_onset], dim=2)
+        .flip(0)
+        .numpy()
+    )
+
+    image_data = np.concatenate((mel_image, line, prediction_weights_np, line, pred_image), axis=0)
+    image = Image.fromarray(image_data, "RGB")
     image.save(path)
+
+
+def music_annotation_to_numpy_image(music_annotation: MusicAnnotation):
+    onsets = (255 * music_annotation.onset.t()).to(torch.uint8).cpu()
+    frames = (255 * music_annotation.frame.t()).to(torch.uint8).cpu()
+    offset = (255 * music_annotation.offset.t()).to(torch.uint8).cpu()
+    image = torch.stack([onsets, frames, offset], dim=2).flip(0).numpy()
+    return image
+
+
+def create_mel_np_image(mel, model):
+    mel = mel.squeeze()
+    mel = mel - model.min_mel_value
+    mel = 255 / (model.max_mel_value - model.min_mel_value) * mel
+    mel_data = (mel.t()).to(torch.uint8).cpu()
+    mel_image = torch.stack([mel_data, mel_data, mel_data], dim=2).flip(0).numpy()
+    return mel_image
 
 
 def save_pred_and_label_piano_roll(
     path,
+    mel,
+    model,
     reference: MusicAnnotation,
     prediction: MusicAnnotation,
+    prediction_notes: MusicAnnotation,
     onset_threshold=0.5,
     offsets_threshold=0.5,
     frame_threshold=0.5,
-    zoom=4,
 ):
-    """
-    Saves a piano roll diagram
-
-    Parameters
-    ----------
-    path: str
-    onsets: torch.FloatTensor, shape = [frames, bins]
-    frames: torch.FloatTensor, shape = [frames, bins]
-    onset_threshold: float
-    frame_threshold: float
-    zoom: int
-    """
     assert reference.onset.shape == prediction.onset.shape
-    ref_frame = (reference.frame).t().to(torch.uint8).cpu()
-    reference_stack = torch.stack([ref_frame, ref_frame, ref_frame], dim=2).cpu()
-    reference_image_data = reference_stack.flip(0).mul(int(255 // 4)).numpy()
+    mel_image = create_mel_np_image(mel, model)
 
-    pred_onset = (prediction.onset > onset_threshold).t().to(torch.uint8).cpu()
-    pred_frame = (prediction.frame > frame_threshold).t().to(torch.uint8).cpu()
-    pred_offset = (prediction.offset > onset_threshold).t().to(torch.uint8).cpu()
-    # ref_offset = (1 - reference.velocity).t().to(torch.uint8).cpu()
-    pred_stack = torch.stack([pred_onset, pred_frame, pred_offset], dim=2).cpu()
-    pred_image_data = pred_stack.flip(0).mul(255 // 2).numpy()
+    prediction_weights_np = music_annotation_to_numpy_image(prediction)
+    reference_np = music_annotation_to_numpy_image(reference)
+    line = 100 * np.ones((1, prediction_weights_np.shape[1], prediction_weights_np.shape[2]), dtype=np.uint8)
 
-    image_data = reference_image_data + pred_image_data
+    pred_frames = (255 // 2 * prediction_notes.frame.t()).to(torch.uint8).cpu()
+    pred_onset = (255 // 2 * prediction_notes.onset.t()).to(torch.uint8).cpu()
+    ref_frames = (255 // 2 * reference.frame.t()).to(torch.uint8).cpu()
+    ref_onset = (255 // 2 * reference.onset.t()).to(torch.uint8).cpu()
+    pred_image = (
+        torch.stack([pred_frames + pred_onset, ref_frames + ref_onset, ref_frames + ref_onset], dim=2).flip(0).numpy()
+    )
 
-    # image brightness enhancer
+    image_data = np.concatenate((mel_image, line, prediction_weights_np, line, reference_np, line, pred_image), axis=0)
     image = Image.fromarray(image_data, "RGB")
-    image.resize((image.size[0], image.size[1] * zoom))
     image.save(path)

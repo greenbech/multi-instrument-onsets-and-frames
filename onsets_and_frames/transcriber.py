@@ -4,6 +4,7 @@ A rough translation of Magenta's Onsets and Frames implementation [1].
     [1] https://github.com/tensorflow/magenta/blob/master/magenta/models/onsets_frames_transcription/model.py
 """
 
+from math import exp, log
 from typing import Dict, Tuple
 
 import torch
@@ -13,8 +14,10 @@ from torchaudio.transforms import MelSpectrogram
 
 from onsets_and_frames.constants import (
     HOP_LENGTH,
+    MAX_MIDI,
     MEL_FMAX,
     MEL_FMIN,
+    MIN_MIDI,
     N_MELS,
     SAMPLE_RATE,
     WINDOW_LENGTH,
@@ -62,19 +65,46 @@ class ConvStack(nn.Module):
 
 
 class OnsetsAndFrames(nn.Module):
-    def __init__(self, input_features, output_features, model_complexity=48):
+    def __init__(
+        self,
+        input_features,
+        output_features,
+        model_complexity=48,
+        predict_velocity=False,
+        min_midi=MIN_MIDI,
+        max_midi=MAX_MIDI,
+        hop_length=HOP_LENGTH,
+        sample_rate=SAMPLE_RATE,
+        window_length=WINDOW_LENGTH,
+        mel_fmin=MEL_FMIN,
+        mel_fmax=MEL_FMAX,
+        n_mels=N_MELS,
+    ):
+        self.predict_velocity = predict_velocity
+        self.min_midi = min_midi
+        self.max_midi = max_midi
+        self.hop_length = hop_length
+        self.sample_rate = sample_rate
+        self.window_length = window_length
+        self.mel_fmin = mel_fmin
+        self.mel_fmax = mel_fmax
+        self.n_mels = n_mels
+        self.max_mel_value = log(self.window_length)
+        self.min_mel_value = -self.max_mel_value
+        self._mel_clamp_value = exp(-log(self.window_length))
         super().__init__()
 
         model_size = model_complexity * 16
 
         self.melspectrogram = MelSpectrogram(
-            sample_rate=SAMPLE_RATE,
-            n_fft=WINDOW_LENGTH,
-            win_length=WINDOW_LENGTH,
-            hop_length=HOP_LENGTH,
-            f_min=MEL_FMIN,
-            f_max=MEL_FMAX,
-            n_mels=N_MELS,
+            sample_rate=self.sample_rate,
+            n_fft=self.window_length,
+            win_length=self.window_length,
+            hop_length=self.hop_length,
+            power=1.0,
+            f_min=self.mel_fmin,
+            f_max=self.mel_fmax,
+            n_mels=self.n_mels,
         )
 
         def sequence_model(input_size: int, output_size: int):
@@ -98,9 +128,10 @@ class OnsetsAndFrames(nn.Module):
         self.combined_stack = nn.Sequential(
             sequence_model(output_features * 3, model_size), nn.Linear(model_size, output_features), nn.Sigmoid()
         )
-        self.velocity_stack = nn.Sequential(
-            ConvStack(input_features, model_size), nn.Linear(model_size, output_features)
-        )
+        if self.predict_velocity:
+            self.velocity_stack = nn.Sequential(
+                ConvStack(input_features, model_size), nn.Linear(model_size, output_features)
+            )
 
     def forward(self, mel):
         onset_pred = self.onset_stack(mel)
@@ -108,8 +139,16 @@ class OnsetsAndFrames(nn.Module):
         activation_pred = self.frame_stack(mel)
         combined_pred = torch.cat([onset_pred.detach(), offset_pred.detach(), activation_pred], dim=-1)
         frame_pred = self.combined_stack(combined_pred)
-        velocity_pred = self.velocity_stack(mel)
+        if self.predict_velocity:
+            velocity_pred = self.velocity_stack(mel)
+        else:
+            velocity_pred = None
         return onset_pred, offset_pred, activation_pred, frame_pred, velocity_pred
+
+    def mel(self, wav: torch.tensor) -> torch.tensor:
+        mel_output = self.melspectrogram(wav.reshape(-1, wav.shape[-1])[:, :-1]).transpose(-1, -2)
+        mel_output = torch.log(torch.clamp(mel_output, min=self._mel_clamp_value))
+        return mel_output
 
     def run_on_batch(self, batch: AudioAndLabels) -> Tuple[MusicAnnotation, Dict[str, any]]:
         audio_label = batch.audio
@@ -118,22 +157,29 @@ class OnsetsAndFrames(nn.Module):
         frame_label = batch.annotation.frame
         velocity_label = batch.annotation.velocity
 
-        mel = self.melspectrogram(audio_label.reshape(-1, audio_label.shape[-1])[:, :-1]).transpose(-1, -2)
+        mel = self.mel(audio_label)
         onset_pred, offset_pred, _, frame_pred, velocity_pred = self(mel)
+
+        if self.predict_velocity:
+            velocity_pred = velocity_pred.reshape(*velocity_label.shape)
+        else:
+            velocity_pred = None
 
         predictions = MusicAnnotation(
             onset=onset_pred.reshape(*onset_label.shape),
             offset=offset_pred.reshape(*offset_label.shape),
             frame=frame_pred.reshape(*frame_label.shape),
-            velocity=velocity_pred.reshape(*velocity_label.shape),
+            velocity=velocity_pred,
         )
 
         losses = {
             "loss/onset": F.binary_cross_entropy(predictions.onset, onset_label),
             "loss/offset": F.binary_cross_entropy(predictions.offset, offset_label),
             "loss/frame": F.binary_cross_entropy(predictions.frame, frame_label),
-            "loss/velocity": self.velocity_loss(predictions.velocity, velocity_label, onset_label),
         }
+
+        if self.predict_velocity:
+            losses["loss/velocity"] = self.velocity_loss(predictions.velocity, velocity_label, onset_label)
 
         return predictions, losses
 
