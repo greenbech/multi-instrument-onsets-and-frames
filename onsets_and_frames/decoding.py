@@ -3,7 +3,9 @@ import torch
 from slakh_dataset.data_classes import MusicAnnotation
 
 
-def extract_notes(onsets, frames, velocity=None, onset_threshold=0.5, frame_threshold=0.5):
+def extract_notes(
+    onsets, frames, velocity=None, onset_threshold=0.5, frame_threshold=0.5, add_onset_modification=False
+):
     """
     Finds the note timings based on the onsets and frames information
 
@@ -23,10 +25,10 @@ def extract_notes(onsets, frames, velocity=None, onset_threshold=0.5, frame_thre
     """
     # Increase onset value to position with higer frames values after
     frames_diff_avg = torch.cat([(frames[1:, :] + frames[:-1, :]) / 2, frames[-1:, :]], dim=0)
-    onsets_copy = onsets.clone().detach()
-    onsets_copy_modified = onsets_copy + (1 / frame_threshold * frames_diff_avg) * onsets_copy
-
-    onsets_copy_modified[1:, :] -= torch.clip(frames[:-1, :] - frame_threshold, 0)
+    onsets_copy_modified = onsets.clone().detach()
+    if add_onset_modification:
+        onsets_copy_modified += (1 / frame_threshold * frames_diff_avg) * onsets_copy_modified
+        onsets_copy_modified[1:, :] -= torch.clip(frames[:-1, :] - frame_threshold, 0)
 
     onsets = (onsets_copy_modified > onset_threshold).cpu().to(torch.uint8)
     frames = (frames > frame_threshold).cpu().to(torch.uint8)
@@ -53,7 +55,7 @@ def extract_notes(onsets, frames, velocity=None, onset_threshold=0.5, frame_thre
             if offset == onsets.shape[0]:
                 break
 
-        if offset > onset + 1:
+        if offset > onset:
             pitches.append(pitch)
             intervals.append([onset, offset])
             if velocity is not None:

@@ -18,13 +18,13 @@ from mir_eval.util import midi_to_hz
 from scipy.stats import hmean
 from tqdm import tqdm
 
+from onsets_and_frames import midi
 from onsets_and_frames.constants import HOP_LENGTH, SAMPLE_RATE
 from onsets_and_frames.decoding import (
     extract_notes,
     notes_music_annotation,
     notes_to_frames,
 )
-from onsets_and_frames.midi import save_midi
 from onsets_and_frames.transcriber import OnsetsAndFrames
 from onsets_and_frames.utils import save_pred_and_label_piano_roll, summary
 
@@ -37,7 +37,7 @@ def evaluate(
     onset_threshold=0.5,
     frame_threshold=0.5,
     save_path=None,
-    is_validation=False,
+    save_midi=False,
 ):
     metrics = defaultdict(list)
 
@@ -57,7 +57,6 @@ def evaluate(
         p_est, i_est, v_est = extract_notes(pred.onset, pred.frame, pred.velocity, onset_threshold, frame_threshold)
 
         pred_notes = notes_music_annotation(p_est, i_est, pred.frame.shape)
-        mel = model.mel(label.audio)
 
         t_ref, f_ref = notes_to_frames(p_ref, i_ref, label.annotation.frame.shape)
         t_est, f_est = notes_to_frames(p_est, i_est, pred.frame.shape)
@@ -131,10 +130,10 @@ def evaluate(
             note_w_offset_f1 = metrics["metric/note-with-offsets/f1"][-1]
             file_name = f"{track}-{start_time}-{end_time}-F1s:{frame_f1:.3f}|{note_f1:.3f}|{note_w_offset_f1:.3f}"
             label_path = os.path.join(save_path, file_name + ".label.png")
-            save_pred_and_label_piano_roll(label_path, mel, model, label.annotation, pred, pred_notes)
-            if not is_validation:
+            save_pred_and_label_piano_roll(label_path, model, label, pred, pred_notes)
+            if save_midi:
                 midi_path = os.path.join(save_path, file_name + ".pred.mid")
-                save_midi(midi_path, p_est, i_est, v_est)
+                midi.save_midi(midi_path, p_est, i_est, v_est)
 
     if save_path is not None:
         with open(os.path.join(save_path, "evaluation.txt"), "w") as f:
@@ -163,17 +162,11 @@ def evaluate_file_on_slakh_amt_dataset(
     model = torch.load(model_file, map_location=device).eval()
     summary(model)
 
-    # piano_midis = list(range(8))
-    # guitar_midis = list(range(24, 32))
-    # bass_midis = list(range(32, 40))
-    # brass_midis = list(range(57, 64))
-    # reed_midis = list(range(64, 72))
     dataset = dataset_module.SlakhAmtDataset(
         path=path,
         split=split,
         audio=audio,
         instrument=instrument,
-        # midi_programs=piano_midis + guitar_midis + bass_midis + brass_midis + reed_midis,
         groups=[group],
         skip_pitch_bend_tracks=skip_pitch_bend_tracks,
         device=device,

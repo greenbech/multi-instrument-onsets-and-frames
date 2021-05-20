@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name="amt_e3"   # Sensible name for the job
-#SBATCH --time=00-03:00:00    # Upper time limit for the job (DD-HH:MM:SS)
+#SBATCH --time=00-05:00:00    # Upper time limit for the job (DD-HH:MM:SS)
 #SBATCH --partition=GPUQ
 #SBATCH --gres=gpu:1
 

@@ -60,8 +60,11 @@ def config():
     create_validation_images = True
 
     predict_velocity = False
+    feed_velocity_to_onset = False
+    add_unet_model = False
     min_midi = MIN_MIDI
     max_midi = MAX_MIDI
+    n_mels = N_MELS
 
     ex.observers.append(FileStorageObserver.create(logdir))
 
@@ -94,8 +97,11 @@ def train(
     num_validation_files,
     create_validation_images,
     predict_velocity,
+    feed_velocity_to_onset,
+    add_unet_model,
     min_midi,
     max_midi,
+    n_mels,
 ):
 
     print_config(ex.current_run)
@@ -144,10 +150,12 @@ def train(
 
     if resume_iteration is None:
         model = OnsetsAndFrames(
-            N_MELS,
+            n_mels,
             max_midi - min_midi + 1,
-            model_complexity,
+            model_complexity=model_complexity,
             predict_velocity=predict_velocity,
+            feed_velocity_to_onset=feed_velocity_to_onset,
+            add_unet_model=add_unet_model,
             min_midi=min_midi,
             max_midi=max_midi,
         ).to(device)
@@ -193,7 +201,7 @@ def train(
                     validation_path = os.path.join(logdir, f"model-{i}")
                 else:
                     validation_path = None
-                metrics = evaluate(validation_dataset, model, save_path=validation_path, is_validation=True)
+                metrics = evaluate(validation_dataset, model, save_path=validation_path, save_midi=False)
                 print_metrics(metrics, add_loss=True, file=sys.stderr)
                 print()
                 for key, value in metrics.items():

@@ -9,7 +9,7 @@ def main():
     ex.run(
         config_updates={
             "split": "redux",
-            "audio": "mix.flac",
+            "audio": "individual",
             "instrument": "electric-bass",
             "max_harmony": 2,
             "skip_pitch_bend_tracks": True,

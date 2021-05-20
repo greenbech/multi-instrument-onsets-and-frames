@@ -18,7 +18,6 @@ from onsets_and_frames.constants import (
     MEL_FMAX,
     MEL_FMIN,
     MIN_MIDI,
-    N_MELS,
     SAMPLE_RATE,
     WINDOW_LENGTH,
 )
@@ -26,6 +25,7 @@ from onsets_and_frames.data_classes import MusicAnnotation
 from onsets_and_frames.dataset import AudioAndLabels
 
 from .lstm import BiLSTM
+from .unet import UNet
 
 
 class ConvStack(nn.Module):
@@ -71,6 +71,8 @@ class OnsetsAndFrames(nn.Module):
         output_features,
         model_complexity=48,
         predict_velocity=False,
+        feed_velocity_to_onset=False,
+        add_unet_model=False,
         min_midi=MIN_MIDI,
         max_midi=MAX_MIDI,
         hop_length=HOP_LENGTH,
@@ -78,9 +80,10 @@ class OnsetsAndFrames(nn.Module):
         window_length=WINDOW_LENGTH,
         mel_fmin=MEL_FMIN,
         mel_fmax=MEL_FMAX,
-        n_mels=N_MELS,
     ):
         self.predict_velocity = predict_velocity
+        self.feed_velocity_to_onset = feed_velocity_to_onset
+        self.add_unet_model = add_unet_model
         self.min_midi = min_midi
         self.max_midi = max_midi
         self.hop_length = hop_length
@@ -88,7 +91,7 @@ class OnsetsAndFrames(nn.Module):
         self.window_length = window_length
         self.mel_fmin = mel_fmin
         self.mel_fmax = mel_fmax
-        self.n_mels = n_mels
+        self.n_mels = input_features
         self.max_mel_value = log(self.window_length)
         self.min_mel_value = -self.max_mel_value
         self._mel_clamp_value = exp(-log(self.window_length))
@@ -107,15 +110,27 @@ class OnsetsAndFrames(nn.Module):
             n_mels=self.n_mels,
         )
 
+        if self.add_unet_model:
+            self.unet = UNet(in_channels=1)
+
         def sequence_model(input_size: int, output_size: int):
             return BiLSTM(input_size, output_size // 2)
 
-        self.onset_stack = nn.Sequential(
-            ConvStack(input_features, model_size),
-            sequence_model(model_size, model_size),
-            nn.Linear(model_size, output_features),
-            nn.Sigmoid(),
-        )
+        if self.feed_velocity_to_onset:
+            self.onset_stack = nn.Sequential(
+                ConvStack(input_features + output_features, model_size),
+                sequence_model(model_size, model_size),
+                nn.Linear(model_size, output_features),
+                nn.Sigmoid(),
+            )
+        else:
+            self.onset_stack = nn.Sequential(
+                ConvStack(input_features, model_size),
+                sequence_model(model_size, model_size),
+                nn.Linear(model_size, output_features),
+                nn.Sigmoid(),
+            )
+
         self.offset_stack = nn.Sequential(
             ConvStack(input_features, model_size),
             sequence_model(model_size, model_size),
@@ -134,15 +149,29 @@ class OnsetsAndFrames(nn.Module):
             )
 
     def forward(self, mel):
-        onset_pred = self.onset_stack(mel)
-        offset_pred = self.offset_stack(mel)
-        activation_pred = self.frame_stack(mel)
-        combined_pred = torch.cat([onset_pred.detach(), offset_pred.detach(), activation_pred], dim=-1)
-        frame_pred = self.combined_stack(combined_pred)
+        if self.add_unet_model:
+            mel = mel.unsqueeze(1)
+            prev_length = mel.shape[2]
+            if prev_length % 64 != 0:
+                padder = torch.zeros(mel.shape[0], mel.shape[1], 64 - (mel.shape[2] % 64), mel.shape[3]).to(mel.device)
+                mel = torch.cat([mel, padder], dim=2)
+            mel = self.unet(mel)
+            if prev_length % 64 != 0:
+                mel = mel[:, :, :prev_length, :]
+            mel = mel.squeeze(1)
         if self.predict_velocity:
             velocity_pred = self.velocity_stack(mel)
         else:
             velocity_pred = None
+        if self.feed_velocity_to_onset:
+            mel_and_velocity = torch.cat([mel, velocity_pred.detach()], dim=-1)
+            onset_pred = self.onset_stack(mel_and_velocity)
+        else:
+            onset_pred = self.onset_stack(mel)
+        offset_pred = self.offset_stack(mel)
+        activation_pred = self.frame_stack(mel)
+        combined_pred = torch.cat([onset_pred.detach(), offset_pred.detach(), activation_pred], dim=-1)
+        frame_pred = self.combined_stack(combined_pred)
         return onset_pred, offset_pred, activation_pred, frame_pred, velocity_pred
 
     def mel(self, wav: torch.tensor) -> torch.tensor:

@@ -6,7 +6,8 @@ import torch
 from PIL import Image
 from torch.nn.modules.module import _addindent
 
-from onsets_and_frames.data_classes import MusicAnnotation
+from onsets_and_frames.data_classes import AudioAndLabels, MusicAnnotation
+from onsets_and_frames.transcriber import OnsetsAndFrames
 
 
 # https://github.com/pseeth/autoclip/blob/master/autoclip.py
@@ -102,10 +103,14 @@ def music_annotation_to_numpy_image(music_annotation: MusicAnnotation):
     return image
 
 
-def create_mel_np_image(mel, model):
+def create_mel_np_image(mel, min_value: float = None, max_value: float = None):
+    if min_value is None:
+        min_value = torch.min(mel)
+    if max_value is None:
+        max_value = torch.max(mel)
     mel = mel.squeeze()
-    mel = mel - model.min_mel_value
-    mel = 255 / (model.max_mel_value - model.min_mel_value) * mel
+    mel = mel - min_value
+    mel = 255 / (max_value - min_value) * mel
     mel_data = (mel.t()).to(torch.uint8).cpu()
     mel_image = torch.stack([mel_data, mel_data, mel_data], dim=2).flip(0).numpy()
     return mel_image
@@ -113,17 +118,30 @@ def create_mel_np_image(mel, model):
 
 def save_pred_and_label_piano_roll(
     path,
-    mel,
-    model,
-    reference: MusicAnnotation,
+    model: OnsetsAndFrames,
+    audio_and_label: AudioAndLabels,
     prediction: MusicAnnotation,
     prediction_notes: MusicAnnotation,
-    onset_threshold=0.5,
-    offsets_threshold=0.5,
-    frame_threshold=0.5,
 ):
+    reference = audio_and_label.annotation
     assert reference.onset.shape == prediction.onset.shape
-    mel_image = create_mel_np_image(mel, model)
+
+    mel = model.mel(audio_and_label.audio)
+    mel_image = create_mel_np_image(mel, model.min_mel_value, model.max_mel_value)
+
+    mel_unet_image = None
+    if model.add_unet_model:
+        mel = mel.unsqueeze(1)
+        prev_length = mel.shape[2]
+        if prev_length % 64 != 0:
+            padder = torch.zeros(mel.shape[0], mel.shape[1], 64 - (mel.shape[2] % 64), mel.shape[3]).to(mel.device)
+            mel = torch.cat([mel, padder], dim=2)
+        mel = model.unet(mel)
+        if prev_length % 64 != 0:
+            mel = mel[:, :, :prev_length, :]
+        mel = mel.squeeze(1)
+
+        mel_unet_image = create_mel_np_image(mel, None, None)
 
     prediction_weights_np = music_annotation_to_numpy_image(prediction)
     reference_np = music_annotation_to_numpy_image(reference)
@@ -137,6 +155,13 @@ def save_pred_and_label_piano_roll(
         torch.stack([pred_frames + pred_onset, ref_frames + ref_onset, ref_frames + ref_onset], dim=2).flip(0).numpy()
     )
 
-    image_data = np.concatenate((mel_image, line, prediction_weights_np, line, reference_np, line, pred_image), axis=0)
+    if mel_unet_image is None:
+        image_data = np.concatenate(
+            (mel_image, line, prediction_weights_np, line, reference_np, line, pred_image), axis=0
+        )
+    else:
+        image_data = np.concatenate(
+            (mel_image, line, mel_unet_image, line, prediction_weights_np, line, reference_np, line, pred_image), axis=0
+        )
     image = Image.fromarray(image_data, "RGB")
     image.save(path)

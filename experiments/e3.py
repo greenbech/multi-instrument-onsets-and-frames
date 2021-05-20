@@ -9,7 +9,7 @@ def main():
     ex.run(
         config_updates={
             "split": "redux",
-            "audio": "stems/bass.flac",
+            "audio": "mix.flac",
             "instrument": "electric-bass",
             "max_harmony": 2,
             "skip_pitch_bend_tracks": True,
@@ -21,9 +21,10 @@ def main():
             "num_validation_files": 50,
             "create_validation_images": True,
             "predict_velocity": False,
+            "add_unet_model": True,
+            "n_mels": 256,
             "min_midi": 35,  # B1, https://github.com/ethman/slakh-generation/issues/2
-            "max_midi": 67,  # G4 (12th fret G string)
-            "path": "data/slakh2100_flac_16k_umx",
+            "max_midi": 67,  # G4 (12th fret G string),
         }
     )
 

@@ -21,9 +21,13 @@ def main():
             "validation_interval": 500,
             "num_validation_files": 50,
             "create_validation_images": True,
-            "predict_velocity": False,
+            "predict_velocity": True,
+            "feed_velocity_to_onset": True,
+            "add_unet_model": False,
+            "n_mels": 256,
             "min_midi": 28,  # E1
             "max_midi": 96,  # C7
+            "iterations": 20000,
         }
     )
 
