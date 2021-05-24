@@ -122,7 +122,7 @@ def train(
             midi_programs=midi_programs,
             groups=train_groups,
             sequence_length=sequence_length,
-            max_files_in_memory=800,
+            # max_files_in_memory=None,
             skip_pitch_bend_tracks=skip_pitch_bend_tracks,
             min_midi=min_midi,
             max_midi=max_midi,
@@ -198,10 +198,10 @@ def train(
             model.eval()
             with torch.no_grad():
                 if create_validation_images:
-                    validation_path = os.path.join(logdir, f"model-{i}")
+                    validation_folder = os.path.join(logdir, f"model-{i}")
                 else:
-                    validation_path = None
-                metrics = evaluate(validation_dataset, model, save_path=validation_path, save_midi=False)
+                    validation_folder = None
+                metrics = evaluate(validation_dataset, model, save_folder=validation_folder, save_midi=False)
                 print_metrics(metrics, add_loss=True, file=sys.stderr)
                 print()
                 for key, value in metrics.items():
