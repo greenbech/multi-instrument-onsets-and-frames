@@ -55,7 +55,7 @@ def parse_midi(path, extract_instruments: List[int], extract_drums=False, remove
     return data
 
 
-def save_midi(path, pitches, intervals, velocities, midi_program=0, is_drum=False):
+def save_midi(path, pitches_dict):
     """
     Save extracted notes as a MIDI file
     Parameters
@@ -66,8 +66,22 @@ def save_midi(path, pitches, intervals, velocities, midi_program=0, is_drum=Fals
     velocities: list of velocity values
     """
     file = pretty_midi.PrettyMIDI()
-    instrument = pretty_midi.Instrument(program=midi_program, is_drum=is_drum)
+    for midi_program in pitches_dict:
+        if midi_program == -1:
+            instrument = pretty_midi.Instrument(program=0, is_drum=True)
+        else:
+            instrument = pretty_midi.Instrument(program=midi_program, is_drum=False)
+        pitches = pitches_dict[midi_program]["pitches"]
+        intervals = pitches_dict[midi_program]["intervals"]
+        velocities = pitches_dict[midi_program]["velocities"]
+        add_notes_to_pretty_midi_instrument(
+            instrument=instrument, pitches=pitches, intervals=intervals, velocities=velocities
+        )
+        file.instruments.append(instrument)
+    file.write(path)
 
+
+def add_notes_to_pretty_midi_instrument(instrument, pitches, intervals, velocities):
     # Remove overlapping intervals (end time should be smaller of equal start time of next note on the same pitch)
     intervals_dict = collections.defaultdict(list)
     for i in range(len(pitches)):
@@ -84,9 +98,6 @@ def save_midi(path, pitches, intervals, velocities, midi_program=0, is_drum=Fals
         interval_list = intervals_dict[pitch]
         for interval, i in interval_list:
             pitch = int(round(hz_to_midi(pitches[i])))
-            velocity = int(127 * min(velocities[i], 1))
+            velocity = int(90 + (127 - 90) * min(velocities[i], 1))
             note = pretty_midi.Note(velocity=velocity, pitch=pitch, start=interval[0], end=interval[1])
             instrument.notes.append(note)
-    file.instruments.append(instrument)
-
-    file.write(path)

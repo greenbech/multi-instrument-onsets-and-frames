@@ -77,7 +77,7 @@ def save_pianoroll(path, mel, model, prediction: MusicAnnotation, prediction_not
     """
     Saves a piano roll diagram
     """
-    mel_image = create_mel_np_image(mel, model)
+    mel_image = create_mel_np_image(mel, model.min_mel_value, model.max_mel_value)
     prediction_weights_np = music_annotation_to_numpy_image(prediction)
     line = 100 * np.ones((1, prediction_weights_np.shape[1], prediction_weights_np.shape[2]), dtype=np.uint8)
 
@@ -119,14 +119,14 @@ def create_mel_np_image(mel, min_value: float = None, max_value: float = None):
 def save_pred_and_label_piano_roll(
     path,
     model: OnsetsAndFrames,
-    audio_and_label: AudioAndLabels,
+    audio: AudioAndLabels,
+    reference: MusicAnnotation,
     prediction: MusicAnnotation,
     prediction_notes: MusicAnnotation,
 ):
-    reference = audio_and_label.annotation
     assert reference.onset.shape == prediction.onset.shape
 
-    mel = model.mel(audio_and_label.audio)
+    mel = model.mel(audio)
     mel_image = create_mel_np_image(mel, model.min_mel_value, model.max_mel_value)
 
     mel_unet_image = None

@@ -118,8 +118,8 @@ def train(
             path=path,
             split=split,
             audio=audio,
-            instrument=instrument,
-            midi_programs=midi_programs,
+            label_instruments=instrument,
+            label_midi_programs=midi_programs,
             groups=train_groups,
             sequence_length=sequence_length,
             # max_files_in_memory=None,
@@ -133,8 +133,8 @@ def train(
             path=path,
             split=split,
             audio=audio,
-            instrument=instrument,
-            midi_programs=midi_programs,
+            label_instruments=instrument,
+            label_midi_programs=midi_programs,
             groups=validation_groups,
             sequence_length=validation_length,
             num_files=num_validation_files,
@@ -149,9 +149,10 @@ def train(
     loader = DataLoader(dataset, batch_size, shuffle=True, drop_last=True)
 
     if resume_iteration is None:
+        out_features = len(instrument) * (max_midi - min_midi + 1)
         model = OnsetsAndFrames(
             n_mels,
-            max_midi - min_midi + 1,
+            out_features,
             model_complexity=model_complexity,
             predict_velocity=predict_velocity,
             feed_velocity_to_onset=feed_velocity_to_onset,
