@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name="amt_e_piano"   # Sensible name for the job
+#SBATCH --job-name="amt_e4"   # Sensible name for the job
 #SBATCH --time=01-00:00:00    # Upper time limit for the job (DD-HH:MM:SS)
 #SBATCH --partition=GPUQ
 #SBATCH --gres=gpu:1
@@ -24,4 +24,4 @@ source oaf/bin/activate
 # pip install poetry
 # poetry install
 
-poetry run python -m experiments.e_all
+poetry run python -m experiments.e4
