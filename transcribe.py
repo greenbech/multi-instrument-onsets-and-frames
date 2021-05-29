@@ -1,6 +1,7 @@
 import argparse
 import os
 from pathlib import Path
+from time import sleep
 
 import numpy as np
 import torch
@@ -10,13 +11,13 @@ from slakh_dataset.data_classes import MusicAnnotation
 from slakh_dataset.midi import instrument_to_canonical_midi_program
 from tqdm import tqdm
 
-from onsets_and_frames.constants import HOP_LENGTH, MIN_MIDI, SAMPLE_RATE
+from onsets_and_frames.constants import HOP_LENGTH, SAMPLE_RATE
 from onsets_and_frames.decoding import extract_notes, notes_music_annotation
 from onsets_and_frames.midi import save_midi
 from onsets_and_frames.utils import save_pianoroll, summary
 
 
-def load_and_process_audio(audio_path, sequence_length, device):
+def load_and_process_audio(audio_path, sequence_length, device, separator=None):
 
     random = np.random.RandomState(seed=42)
 
@@ -35,9 +36,23 @@ def load_and_process_audio(audio_path, sequence_length, device):
     else:
         audio = torchaudio.load(audio_path)[0].to(device)
 
+    audio = torch.unsqueeze(audio, 0)
+    if separator is not None:
+        separate_sr = 44100
+        if sr != separate_sr:
+            audio = torchaudio.transforms.Resample(orig_freq=sr, new_freq=separate_sr)(audio)
+        estimates = separator(audio).detach()
+        audio = torch.sum(estimates[:, 1:, :, :], axis=1)
+        vocal = estimates[:, 0, :, :]
+        drum = estimates[:, 1, :, :]
+        bass = estimates[:, 2, :, :]
+        other = estimates[:, 3, :, :]
+        audio = (0.4 * vocal) + drum + bass + other
+
+        audio = torchaudio.transforms.Resample(orig_freq=separate_sr, new_freq=sr)(audio)
+
     if audio_info.num_channels == 2:
-        audio = torch.mean(audio, 0)
-        audio = torch.unsqueeze(audio, 0)
+        audio = torch.mean(audio, 1)
 
     if sr != SAMPLE_RATE:
         audio = torchaudio.transforms.Resample(orig_freq=sr, new_freq=SAMPLE_RATE)(audio)
@@ -55,21 +70,26 @@ def transcribe_file(
     onset_threshold,
     frame_threshold,
     device,
+    separate_vocal=False,
 ):
 
     model = torch.load(model_file, map_location=device).eval()
     summary(model)
 
+    if separate_vocal:
+        separator = torch.hub.load("sigsep/open-unmix-pytorch", "umxhq", device=device).eval()
+        separator.freeze()
+
     tqdm_range = tqdm(audio_paths)
     for audio_path in tqdm_range:
         tqdm_range.set_description(f"Processing {audio_path}")
 
-        audio = load_and_process_audio(audio_path, sequence_length, device)
+        audio = load_and_process_audio(audio_path, sequence_length, device, separator=separator)
         mel = model.mel(audio)
         onset_pred, offset_pred, _, frame_pred, velocity_pred = model(mel)
         pitches_dict = {}
-        min_midi = 28
-        max_midi = 96
+        min_midi = model.min_midi
+        max_midi = model.max_midi
         midi_range = max_midi - min_midi + 1
         pred_multi = MusicAnnotation(
             onset=onset_pred.reshape((onset_pred.shape[0], onset_pred.shape[1], midi_range, -1)),
@@ -97,7 +117,7 @@ def transcribe_file(
             scaling = HOP_LENGTH / SAMPLE_RATE
 
             i_est = (i_est * scaling).reshape(-1, 2)
-            p_est = np.array([midi_to_hz(MIN_MIDI + midi) for midi in p_est])
+            p_est = np.array([midi_to_hz(min_midi + midi) for midi in p_est])
 
             midi_program = midi_programs[i]
             pitches_dict[midi_program] = {
@@ -114,6 +134,7 @@ def transcribe_file(
         save_name = f"{Path(audio_path).stem}-{'-'.join([str(i) for i in midi_programs])}-f_thld:{frame_threshold}-o_thld:{onset_threshold}"
         midi_path = os.path.join(save_folder, save_name + ".pred.mid")
         save_midi(midi_path, pitches_dict)
+        sleep(2)
 
 
 if __name__ == "__main__":
@@ -126,10 +147,12 @@ if __name__ == "__main__":
     parser.add_argument("--onset-threshold", default=0.35, type=float)
     parser.add_argument("--frame-threshold", default=0.3, type=float)
     parser.add_argument("--device", default="cuda:1" if torch.cuda.is_available() else "cpu")
+    parser.add_argument("--separate-vocal", action="store_true")
 
     args = parser.parse_args()
 
-    save_folder = os.path.join(args.save_folder, args.model_file.replace(os.sep, "-"))
+    vocal_text = "separated" if args.separate_vocal else ""
+    save_folder = os.path.join(args.save_folder, f"{args.model_file.replace(os.sep, '-')}-{vocal_text}")
     midi_programs = [instrument_to_canonical_midi_program(inst) for inst in args.instruments]
 
     with torch.no_grad():
@@ -142,4 +165,5 @@ if __name__ == "__main__":
             onset_threshold=args.onset_threshold,
             frame_threshold=args.frame_threshold,
             device=args.device,
+            separate_vocal=args.separate_vocal,
         )

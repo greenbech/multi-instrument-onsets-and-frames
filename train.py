@@ -31,11 +31,15 @@ def config():
     path = "data/slakh2100_flac_16k"
     split = "redux"
     audio = "individual"
-    instrument = "electric-bass"
+    instruments = "electric-bass"
     midi_programs = None
     max_harmony = 2
     skip_pitch_bend_tracks = True
-    logdir = f"runs/{instrument}-{audio.replace(os.sep, '-')}-transcriber-" + datetime.now().strftime("%y%m%d-%H%M%S")
+
+    instaument_name = instruments if isinstance(instruments, str) else "_".join(instruments)
+    logdir = f"runs/{instaument_name}-{audio.replace(os.sep, '-')}-transcriber-" + datetime.now().strftime(
+        "%y%m%d-%H%M%S"
+    )
 
     batch_size = 8
     sequence_length = 327680
@@ -80,7 +84,7 @@ def train(
     path,
     split,
     audio,
-    instrument,
+    instruments,
     midi_programs,
     max_harmony,
     skip_pitch_bend_tracks,
@@ -112,13 +116,13 @@ def train(
     train_groups, validation_groups = ["train"], ["validation"]
 
     if midi_programs is not None:
-        instrument = None
+        instruments = None
     if dataset == "Slakh":
         dataset = SlakhAmtDataset(
             path=path,
             split=split,
             audio=audio,
-            label_instruments=instrument,
+            label_instruments=instruments,
             label_midi_programs=midi_programs,
             groups=train_groups,
             sequence_length=sequence_length,
@@ -133,7 +137,7 @@ def train(
             path=path,
             split=split,
             audio=audio,
-            label_instruments=instrument,
+            label_instruments=instruments,
             label_midi_programs=midi_programs,
             groups=validation_groups,
             sequence_length=validation_length,
@@ -149,7 +153,7 @@ def train(
     loader = DataLoader(dataset, batch_size, shuffle=True, drop_last=True)
 
     if resume_iteration is None:
-        out_features = len(instrument) * (max_midi - min_midi + 1)
+        out_features = len(instruments) * (max_midi - min_midi + 1)
         model = OnsetsAndFrames(
             n_mels,
             out_features,
@@ -164,7 +168,7 @@ def train(
         resume_iteration = 0
     else:
         model_path = os.path.join(logdir, f"model-{resume_iteration}.pt")
-        model = torch.load(model_path)
+        model = torch.load(model_path).to(device)
         optimizer = torch.optim.Adam(model.parameters(), learning_rate)
         optimizer.load_state_dict(torch.load(os.path.join(logdir, "last-optimizer-state.pt")))
 
@@ -202,7 +206,14 @@ def train(
                     validation_folder = os.path.join(logdir, f"model-{i}")
                 else:
                     validation_folder = None
-                metrics = evaluate(validation_dataset, model, save_folder=validation_folder, save_midi=False)
+                metrics = evaluate(
+                    validation_dataset,
+                    model,
+                    save_folder=validation_folder,
+                    save_midi=False,
+                    instruments=instruments,
+                    onset_threshold=0.35,
+                )
                 print_metrics(metrics, add_loss=True, file=sys.stderr)
                 print()
                 for key, value in metrics.items():
