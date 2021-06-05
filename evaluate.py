@@ -54,7 +54,7 @@ def evaluate(
             value.squeeze_(0).relu_()
 
         p_ref, i_ref, v_ref = extract_notes(
-            label.annotation.onset, label.annotation.frame, label.annotation.velocity, add_onset_modification=True
+            label.annotation.onset, label.annotation.frame, label.annotation.velocity, add_onset_modification=False
         )
         p_est, i_est, v_est = extract_notes(pred.onset, pred.frame, pred.velocity, onset_threshold, frame_threshold)
 
@@ -151,7 +151,7 @@ def evaluate_file_on_slakh_amt_dataset(
     group,
     split,
     audio,
-    instrument,
+    instruments,
     midi_programs,
     skip_pitch_bend_tracks,
     max_harmony,
@@ -169,8 +169,8 @@ def evaluate_file_on_slakh_amt_dataset(
         path=path,
         split=split,
         audio=audio,
-        instrument=instrument,
-        midi_programs=midi_programs,
+        label_instruments=instruments,
+        label_midi_programs=midi_programs,
         groups=[group],
         skip_pitch_bend_tracks=skip_pitch_bend_tracks,
         device=device,
@@ -220,7 +220,7 @@ if __name__ == "__main__":
     parser.add_argument("split", type=str)
     parser.add_argument("audio", type=str)
     parser.add_argument("--group", default="test", type=str)
-    parser.add_argument("--instrument", type=str, default=None)
+    parser.add_argument("--instruments", type=str, default=None)
     parser.add_argument("--midi-programs", nargs="+", type=int)
     parser.add_argument("--skipbend", action="store_true")
     parser.add_argument("--save-folder", default=None)
@@ -234,7 +234,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.save_folder is None:
-        instrument_name = args.instrument if args.instrument else "_".join([str(i) for i in args.midi_programs])
+        instrument_name = args.instruments if args.instruments else "_".join([str(i) for i in args.midi_programs])
         folder_name = f"{os.path.basename(args.model_file)}-{datetime.now().strftime('%y%m%d-%H%M%S')}-{args.group}-{args.split}-{args.audio.replace(os.sep, '_')}-{instrument_name}-{args.skipbend}-maxharm_{args.max_harmony}-o_thld_{args.onset_threshold}_f_thld_{args.frame_threshold}"
         args.save_folder = os.path.join(os.path.dirname(args.model_file), folder_name)
     print(args.save_folder)
@@ -245,7 +245,7 @@ if __name__ == "__main__":
             group=args.group,
             split=args.split,
             audio=args.audio,
-            instrument=args.instrument,
+            instruments=args.instruments,
             midi_programs=args.midi_programs,
             skip_pitch_bend_tracks=args.skipbend,
             max_harmony=args.max_harmony,

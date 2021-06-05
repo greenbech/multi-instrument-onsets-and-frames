@@ -8,6 +8,8 @@ def main():
 
     ex.run(
         config_updates={
+            "experiment": "e3a",
+            "iterations": 50000,
             "split": "redux",
             "audio": "mix.flac",
             "instrument": "electric-bass",

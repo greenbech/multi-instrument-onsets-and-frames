@@ -4,6 +4,7 @@ from datetime import datetime
 
 import numpy as np
 import torch
+import tqdm
 from sacred import Experiment
 from sacred.commands import print_config
 from sacred.observers import FileStorageObserver
@@ -11,7 +12,6 @@ from slakh_dataset import SlakhAmtDataset
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-from tqdm import tqdm
 
 from evaluate import evaluate, print_metrics
 from onsets_and_frames.constants import MAX_MIDI, MIN_MIDI, N_MELS
@@ -33,9 +33,14 @@ def config():
     audio = "individual"
     instrument = "electric-bass"
     midi_programs = None
-    max_harmony = 2
+    max_harmony = None
     skip_pitch_bend_tracks = True
-    logdir = f"runs/{instrument}-{audio.replace(os.sep, '-')}-transcriber-" + datetime.now().strftime("%y%m%d-%H%M%S")
+    experiment = None
+
+    experiment_name = experiment + "-" if experiment else ""
+    logdir = f"runs/{experiment_name}{instrument}-{audio.replace(os.sep, '-')}-transcriber-" + datetime.now().strftime(
+        "%y%m%d-%H%M%S"
+    )
 
     batch_size = 8
     sequence_length = 327680
@@ -118,8 +123,8 @@ def train(
             path=path,
             split=split,
             audio=audio,
-            instrument=instrument,
-            midi_programs=midi_programs,
+            label_instruments=instrument,
+            label_midi_programs=midi_programs,
             groups=train_groups,
             sequence_length=sequence_length,
             # max_files_in_memory=None,
@@ -133,8 +138,8 @@ def train(
             path=path,
             split=split,
             audio=audio,
-            instrument=instrument,
-            midi_programs=midi_programs,
+            label_instruments=instrument,
+            label_midi_programs=midi_programs,
             groups=validation_groups,
             sequence_length=validation_length,
             num_files=num_validation_files,
@@ -172,7 +177,7 @@ def train(
 
     grad_history = []
 
-    loop = tqdm(range(resume_iteration + 1, iterations + 1), initial=resume_iteration + 1)
+    loop = tqdm.trange(resume_iteration + 1, iterations + 1)
     for i, batch in zip(loop, cycle(loader)):
         _, losses = model.run_on_batch(batch)
 

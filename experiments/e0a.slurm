@@ -1,6 +1,6 @@
 #!/bin/bash
-#SBATCH --job-name="amt_e3"   # Sensible name for the job
-#SBATCH --time=00-05:00:00    # Upper time limit for the job (DD-HH:MM:SS)
+#SBATCH --job-name="e0a_amt"   # Sensible name for the job
+#SBATCH --time=01-00:00:00    # Upper time limit for the job (DD-HH:MM:SS)
 #SBATCH --partition=GPUQ
 #SBATCH --gres=gpu:1
 
@@ -24,4 +24,4 @@ source oaf/bin/activate
 # pip install poetry
 # poetry install
 
-poetry run python -m experiments.e3
+poetry run python -m experiments.e0a
