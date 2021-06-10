@@ -22,6 +22,11 @@ poetry run pre-commit install
 
 Look at my other project, [Slakh PyTorch Dataset](https://github.com/greenbech/slakh-pytorch-dataset), for how to download and use the dataset.
 
+## Usage
+
+Look at the [`/experiments`](./experiments) folder for how to run different experiments using this codebase.
+To run experiment 6, currently the [stream-multi-instrument branch](https://github.com/greenbech/multi-instrument-onsets-and-frames/tree/stream-multi-instrument) must be used.
+
 
 ## Acknowledgement
 
