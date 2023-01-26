@@ -10,3 +10,4 @@ t.py
 tmp/
 
 pretrained_models/
+.venv/
