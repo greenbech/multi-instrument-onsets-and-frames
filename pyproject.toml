@@ -2,7 +2,7 @@
 name = "multi-instrument-onsets-and-frames"
 version = "0.1.0"
 description = ""
-authors = ["Henrik Grønbech <henrikgronbech@gmail.com>"]
+authors = ["Håkon Anders Strømsodd <haakon8855@gmail.com>", "Mats Jaer Nottveit <mnottveit@gmail.com>"]
 license = "MIT"
 
 [tool.black]
