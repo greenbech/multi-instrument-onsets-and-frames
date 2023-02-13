@@ -25,12 +25,12 @@ class PreTrainer:
         )
 
     def test(self):
-        test_data = np.random.rand(5, 3, 229, 229)
+        test_data = np.ones((5, 3, 229, 229))
         test_data = torch.tensor(test_data).float()
         x = self.encoder(test_data)
         print(x)
 
-    def train(self, epochs=5):
+    def train(self, epochs=10):
         test_data = torch.tensor(np.random.rand(10, 3, 229, 229)).float()
         training_loader = DataLoader(test_data, batch_size=5, shuffle=True)
         optimizer = torch.optim.SGD(
@@ -40,29 +40,30 @@ class PreTrainer:
             momentum=0.9,
         )
         for i in range(epochs):
-            for i, data in enumerate(training_loader):
+            running_loss = 0
+            last_loss = 0
+            for j, data in enumerate(training_loader):
                 optimizer.zero_grad()
                 # TODO: Apply random augmentations
-                x1, x2 = data, data * 0.9
+                x1, x2 = data / 0.9, data * 0.9
 
                 z1, z2 = self.encoder(x1), self.encoder(x2)
+                print(z1)
                 p1, p2 = self.predictor(z1), self.predictor(z2)
 
-                loss = PreTrainer.neg_cos_sim(p1, z2) / 2 + PreTrainer.neg_cos_sim(p2, z1) / 2
+                loss = -(PreTrainer.cos_sim(p1, z2).mean() + PreTrainer.cos_sim(p2, z1).mean()) / 2
                 loss.backward()
                 optimizer.step()
 
+                running_loss += loss.item()
+                if j % 2 == 1:
+                    last_loss = running_loss / 1000
+                    print(f"Batch {j+1} Loss: {last_loss}")
+                    running_loss = 0
+
     @staticmethod
-    def neg_cos_sim(p, z):
-        z = z.detach()
-        p = torch.norm(p, dim=1)
-        z = torch.norm(z, dim=1)
-        print(f"p: {p.shape}")
-        print(f"z: {z.shape}")
-        print(f"pz: {(p*z).shape}")
-        ehi = -(p * z).sum(dim=1).mean()
-        print(ehi)
-        return ehi
+    def cos_sim(p, z):
+        return torch.nn.CosineSimilarity(dim=1)(p, z)
 
 
 def main():
