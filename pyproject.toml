@@ -30,6 +30,7 @@ torchaudio = "^0.8.1"
 tensorboard = "^2.5.0"
 slakh-dataset = "^0.1.16"
 bandit = "^1.7.4"
+torchvision = "0.9.1"
 
 [tool.poetry.dev-dependencies]
 pre-commit = "^2.10.1"

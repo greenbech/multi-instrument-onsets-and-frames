@@ -25,7 +25,8 @@ from .constants import (
 from .data_classes import AudioAndLabels, MusicAnnotation
 from .midi import parse_midi
 
-torchaudio.set_audio_backend("sox_io")
+# torchaudio.set_audio_backend("sox_io")
+torchaudio.set_audio_backend("soundfile")
 
 
 class Labels(NamedTuple):

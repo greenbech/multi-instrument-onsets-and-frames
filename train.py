@@ -24,7 +24,7 @@ ex = Experiment("train_transcriber")
 @ex.config
 def config():
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    iterations = 20000
+    iterations = 2
     resume_iteration = None
     checkpoint_interval = 1000
     dataset = "Slakh"
@@ -44,7 +44,7 @@ def config():
 
     batch_size = 8
     sequence_length = 327680
-    model_complexity = 48
+    model_complexity = 2
 
     if torch.cuda.is_available() and torch.cuda.get_device_properties(torch.cuda.current_device()).total_memory < 10e9:
         batch_size //= 2
