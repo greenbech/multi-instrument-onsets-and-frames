@@ -15,7 +15,7 @@ profile = "black"
 skip_glob = '^((?!py$).)*$'    # this makes sort all Python files
 
 [tool.poetry.dependencies]
-python = "3.8"
+python = "3.8.6"
 scipy = ">=1.1.0"
 numpy = ">=1.15.0"
 tqdm = ">=4.28.1"
@@ -28,7 +28,7 @@ pretty_midi = "^0.2.9"
 torch = "^1.8.1"
 torchaudio = "^0.8.1"
 tensorboard = "^2.5.0"
-slakh-dataset = "^0.1.16"
+slakh-dataset = "0.1.20"
 bandit = "^1.7.4"
 torchvision = "0.9.1"
 

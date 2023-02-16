@@ -5,9 +5,12 @@ data
 runs
 .python-version
 
+poetry.lock
+
+.vscode/
 settings.json
 t.py
 tmp/
 
 pretrained_models/
-.venv/
+.venv*/
