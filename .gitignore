@@ -5,6 +5,8 @@ data
 runs
 .python-version
 
+poetry.lock
+
 .vscode/
 settings.json
 t.py
