@@ -5,9 +5,10 @@ data
 runs
 .python-version
 
+.vscode/
 settings.json
 t.py
 tmp/
 
 pretrained_models/
-.venv/
+.venv*/
