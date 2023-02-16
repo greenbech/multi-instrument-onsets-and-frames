@@ -25,13 +25,13 @@ class PreTrainer:
         )
 
     def test(self):
-        test_data = np.ones((5, 3, 229, 229))
+        test_data = np.ones((5, 229, 229))
         test_data = torch.tensor(test_data).float()
         x = self.encoder(test_data)
         print(x)
 
     def train(self, epochs=10):
-        test_data = torch.tensor(np.random.rand(10, 3, 229, 229)).float()
+        test_data = torch.tensor(np.random.rand(10, 229, 229)).float()
         training_loader = DataLoader(test_data, batch_size=5, shuffle=True)
         optimizer = torch.optim.SGD(
             self.encoder.parameters(),
