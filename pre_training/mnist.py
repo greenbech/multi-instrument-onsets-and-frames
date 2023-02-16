@@ -81,8 +81,8 @@ def main():
     transform = torchvision.transforms.Compose(
         [torchvision.transforms.ToTensor(), torchvision.transforms.Normalize((0.1307,), (0.3081,))]
     )
-    mnist_train = torchvision.datasets.MNIST("pre_training/data/", train=True, transform=transform)
-    mnist_test = torchvision.datasets.MNIST("pre_training/data/", train=False, transform=transform)
+    mnist_train = torchvision.datasets.MNIST("pre_training/data/", train=True, download=True, transform=transform)
+    mnist_test = torchvision.datasets.MNIST("pre_training/data/", train=False, download=True, transform=transform)
 
     indices = torch.arange(0, 10000)
     mnist_train = torch.utils.data.Subset(mnist_train, indices)
