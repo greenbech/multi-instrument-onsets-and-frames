@@ -6,6 +6,7 @@ from torch import nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR
+from torch.utils.data.dataloader import default_collate
 
 
 class Net(nn.Module):
@@ -78,24 +79,43 @@ def main():
     """
     Main function for running this python script.
     """
+    device = torch.device("cuda:0")
+
     transform = torchvision.transforms.Compose(
         [torchvision.transforms.ToTensor(), torchvision.transforms.Normalize((0.1307,), (0.3081,))]
     )
+
     mnist_train = torchvision.datasets.MNIST("pre_training/data/", train=True, download=True, transform=transform)
     mnist_test = torchvision.datasets.MNIST("pre_training/data/", train=False, download=True, transform=transform)
+
+    # print(f"Train-data is cuda: {mnist_train.data.is_cuda}")
+    # print(f"Train-targets is cuda: {mnist_train.targets.is_cuda}")
 
     indices = torch.arange(0, 10000)
     mnist_train = torch.utils.data.Subset(mnist_train, indices)
     mnist_test = torch.utils.data.Subset(mnist_test, indices)
 
-    training_loader = torch.utils.data.DataLoader(mnist_train, batch_size=4, shuffle=True, num_workers=2)
-    test_loader = torch.utils.data.DataLoader(mnist_test, batch_size=4, shuffle=True, num_workers=2)
+    batch_size = 64
+    training_loader = torch.utils.data.DataLoader(
+        mnist_train,
+        batch_size=batch_size,
+        shuffle=True,
+        collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x)),
+    )
+    test_loader = torch.utils.data.DataLoader(
+        mnist_test,
+        batch_size=batch_size,
+        shuffle=True,
+        collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x)),
+    )
 
-    model = Net()
-    optimizer = optim.Adadelta(model.parameters(), lr=0.005)
+    print(f"Cuda: {torch.cuda.is_available()}")
+    print(f"Device: {torch.cuda.get_device_name(0)}")
+    model = Net().to(device)
+    optimizer = optim.Adadelta(model.parameters(), lr=0.01)
 
     scheduler = StepLR(optimizer, step_size=1, gamma=0.9)
-    epochs = 14
+    epochs = 20
     for epoch in range(1, epochs + 1):
         train(model, training_loader, optimizer, epoch)
         test(model, test_loader)
