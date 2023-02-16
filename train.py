@@ -24,7 +24,7 @@ ex = Experiment("train_transcriber")
 @ex.config
 def config():
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    iterations = 20000
+    iterations = 5
     resume_iteration = None
     checkpoint_interval = 1000
     dataset = "Slakh"
