@@ -4,7 +4,7 @@ from torch import nn
 import torchvision
 
 
-class SiameseNetwork(nn.Module):
+class Encoder(nn.Module):
     """
     Class contaning the Simple Siamese network.
     """

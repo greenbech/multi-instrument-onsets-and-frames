@@ -14,13 +14,17 @@ class MnistEncoder(nn.Module):
         super().__init__()
         self.pre_trainer = nn.Sequential(
             nn.Conv2d(in_channels=1, out_channels=4, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(4),
             nn.ReLU(),
             nn.Conv2d(in_channels=4, out_channels=8, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(8),
             nn.ReLU(),
             nn.Conv2d(in_channels=8, out_channels=4, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(4),
             nn.ReLU(),
             nn.Conv2d(in_channels=4, out_channels=1, kernel_size=3, stride=1, padding=1),
-            nn.Sigmoid(),
+            nn.BatchNorm2d(1, affine=False),
+            # nn.ReLU(),
         )
 
     def forward(self, x):
