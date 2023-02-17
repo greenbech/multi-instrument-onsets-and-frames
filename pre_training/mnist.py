@@ -88,9 +88,6 @@ def main():
     mnist_train = torchvision.datasets.MNIST("pre_training/data/", train=True, download=True, transform=transform)
     mnist_test = torchvision.datasets.MNIST("pre_training/data/", train=False, download=True, transform=transform)
 
-    # print(f"Train-data is cuda: {mnist_train.data.is_cuda}")
-    # print(f"Train-targets is cuda: {mnist_train.targets.is_cuda}")
-
     indices = torch.arange(0, 10000)
     mnist_train = torch.utils.data.Subset(mnist_train, indices)
     mnist_test = torch.utils.data.Subset(mnist_test, indices)
