@@ -3,6 +3,7 @@
 import torch
 import torchvision
 import numpy as np
+from torch.utils.data.dataloader import default_collate
 
 # from siamese_network import SiameseNetwork
 from simsiam import SimSiam
@@ -104,7 +105,7 @@ def main():
     """
     Main function for running this python script.
     """
-    device = torch.device("cpu")
+    device = torch.device("cuda:0")
 
     transform = torchvision.transforms.Compose(
         [torchvision.transforms.ToTensor(), torchvision.transforms.Normalize((0.1307,), (0.3081,))]
@@ -120,11 +121,11 @@ def main():
         mnist_train,
         batch_size=batch_size,
         shuffle=True,
-        # collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x)),
+        collate_fn=lambda x: tuple(x_.to(device) for x_ in default_collate(x)),
     )
 
     print(f"Cuda: {torch.cuda.is_available()}")
-    # print(f"Device: {torch.cuda.get_device_name(0)}")
+    print(f"Device: {torch.cuda.get_device_name(0)}")
 
     pre_trainer = PreTrainer(device)
     pre_trainer.train(training_loader, epochs=1)
