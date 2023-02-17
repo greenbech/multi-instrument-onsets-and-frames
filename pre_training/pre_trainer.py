@@ -15,17 +15,17 @@ class PreTrainer:
     Pre-Training class for running a SimSiam pre-training procedure.
     """
 
-    def __init__(self):
+    def __init__(self, device):
         self.output_size = 28 * 28
         self.predictor_hidden_size = 2048
-        self.encoder = MnistEncoder()
+        self.encoder = MnistEncoder().to(device)
         self.predictor = nn.Sequential(
             # Two fully connected layers creating a bottleneck
             nn.Linear(self.output_size, self.predictor_hidden_size),
             nn.ReLU(),
             nn.Linear(self.predictor_hidden_size, self.output_size),
             nn.Sigmoid(),
-        )
+        ).to(device)
 
     def test(self):
         test_data = np.ones((5, 229, 229))
@@ -124,8 +124,8 @@ def main():
     print(f"Cuda: {torch.cuda.is_available()}")
     print(f"Device: {torch.cuda.get_device_name(0)}")
 
-    pre_trainer = PreTrainer().to(device)
-    pre_trainer.train(training_loader)
+    pre_trainer = PreTrainer(device)
+    pre_trainer.train(training_loader, epochs=3)
     pre_trainer.save("mnist_encoder.pt")
 
 
