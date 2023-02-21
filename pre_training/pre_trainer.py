@@ -132,4 +132,5 @@ def main():
     pre_trainer.save("mnist_encoder.pt")
 
 
-main()
+if __name__ == "__main__":
+    main()
