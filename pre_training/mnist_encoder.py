@@ -27,9 +27,10 @@ class MnistEncoder(nn.Module):
             # nn.ReLU(),
         )
 
-    def forward(self, x):
+    def forward(self, x, flatten=True):
         x = self.pre_trainer(x)
-        x = torch.flatten(x, 1)
+        if flatten:
+            x = torch.flatten(x, 1)
         return x
 
     def save(self, path: str):
